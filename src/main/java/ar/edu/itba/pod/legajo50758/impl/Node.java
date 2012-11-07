@@ -9,6 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jgroups.Address;
@@ -41,6 +42,7 @@ public class Node implements SignalProcessor, SPNode {
 	private final Thread worker;
 	
 	private final MyMessageDispatcher dispatcher;
+	private AtomicBoolean standalone = new AtomicBoolean(true);
 	
 	public Node(int nThreads) throws Exception {
 		
@@ -75,7 +77,7 @@ public class Node implements SignalProcessor, SPNode {
 			e.printStackTrace();
 			throw new RemoteException();
 		}
-		System.out.println("connecting with cluster:" + cluster);
+//		System.out.println("connecting with cluster:" + cluster);
 		
 		//TODO REBALANCEAR
 	}
@@ -99,7 +101,8 @@ public class Node implements SignalProcessor, SPNode {
 		receivedSignals.set(0);
 		cluster = null;
 		
-		if (channel.isConnected()) {
+//		System.out.println(standalone.get());
+		if (channel.isConnected() && !standalone.get()) {
 			try {
 				channel.send(new Message(null, null, "Channel disconnected"));
 			} catch (Exception e) {
@@ -135,17 +138,15 @@ public class Node implements SignalProcessor, SPNode {
 		//agregado efectivamente (read your writes). Guardate la señal vos hasta que te llegue un ACK.
 		//EN MODO DEGRADADO! ;)
 		
+		
 		List<Address> members = channel.getView().getMembers();
 		Tuple<Address, Address> tuple = Utils.chooseRandomMember(members);
 		Address primaryCopyAddress = tuple.getFirst();
 		Address backupAddress = tuple.getSecond();
 		
 		try {
-			System.out.println(primaryCopyAddress);
-			System.out.println(backupAddress);
 			send(new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress), primaryCopyAddress);
 			send(new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress), backupAddress);
-			System.out.println("sent adds");
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -156,12 +157,10 @@ public class Node implements SignalProcessor, SPNode {
 	@Override
 	public Result findSimilarTo(Signal signal) throws RemoteException {
 		
-		//TODO ACA HAY QUE HACER UN REJUNTE CONO TODOS LOS RESULTS DE LOS OTROS NODOS
-		//IMPPLICA SINCRONIZAR
 		receivedSignals.incrementAndGet();
 				
 		if (channel.isConnected()) {
-			final List<Future<Result>> futureResults = new ArrayList<>();
+			List<Future<Result>> futureResults = new ArrayList<>();
 			List<Result> results = new LinkedList<>();
 			for (final Address address : channel.getView().getMembers()) {
 	
@@ -188,9 +187,7 @@ public class Node implements SignalProcessor, SPNode {
 				}
 			}
 			return result;
-		}
-		
-				
+		}	
 		return null;
 	}
 	

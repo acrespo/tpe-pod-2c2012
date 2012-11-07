@@ -30,7 +30,7 @@ public class SampleServer {
 			reg = LocateRegistry.createRegistry(port);
 			
 //			StandaloneSignalProcessor impl = new StandaloneSignalProcessor();
-			Node impl = new Node(4);
+			Node impl = new Node(2);
 			Remote proxy = UnicastRemoteObject.exportObject(impl, 0);
 
 			// Since the same implementation exports both interfaces, register the same

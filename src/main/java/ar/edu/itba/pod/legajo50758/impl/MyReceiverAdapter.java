@@ -23,7 +23,7 @@ public class MyReceiverAdapter extends ReceiverAdapter {
 	@Override
 	public void receive(Message message) {
 		
-		Utils.log("Received: %s: %s", new Object[] { message.getObject(), ((MyMessage<?>) message.getObject()).getOp(), message.getSrc() });
+//		Utils.log("Received: %s: %s", new Object[] { message.getObject(), message.getSrc() });
 //		if (message.getObject() instanceof MyMessage<?>) {
 			msgQueue.add(message);
 //		}
@@ -31,9 +31,6 @@ public class MyReceiverAdapter extends ReceiverAdapter {
 	
 	@Override
 	public void viewAccepted(View view) {
-		System.out.println("NODE UP");
-//		LA PARECER NO SE PUEDE poner una view dentro de un message
-//		msgQueue.add(new Message(channel.getAddress(), new MyMessage<View>(view, Operation.MEMBERSHIPCHANGED)));
 		
 		if (currentView == null) {
 			currentView = view;

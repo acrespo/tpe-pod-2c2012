@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
+import org.jgroups.util.FutureListener;
+import org.jgroups.util.NotifyingFuture;
 
 import ar.edu.itba.pod.legajo50758.api.Result;
 import ar.edu.itba.pod.legajo50758.api.Signal;
@@ -94,103 +96,20 @@ public class MyWorker implements Runnable {
 							replSize.incrementAndGet();
 						}
 	
-					} else if (op == Operation.MOVE) {
-	
-						if (!myMessage.isReplica()) {
-							System.out.println("Moving primary");
-							BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
-							list.add(new SignalInfo((Signal) obj, myMessage.getCopyAddress(), true));
-							mapSize.incrementAndGet();
-							try {
-								send(new MyMessage<Signal>((Signal) obj, Operation.MOVED, false, channel.getAddress()), myMessage.getCopyAddress());
-							} catch (Exception e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						} else {
-							System.out.println("Moving replica");
-							BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
-							if (list == null) {
-								list = new LinkedBlockingQueue<>();
-								replicas.put(myMessage.getCopyAddress(), list);
-							}
-							list.add(new SignalInfo((Signal) obj, myMessage.getCopyAddress(), false));
-							replSize.incrementAndGet();
-							try {
-								send(new MyMessage<Signal>((Signal) obj, Operation.MOVED, true, channel.getAddress()), myMessage.getCopyAddress());
-							} catch (Exception e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}
-						}
-					} else if (op == Operation.MOVED) {
-						
-						SignalInfo signalInfo;
-						if (!myMessage.isReplica()) {
-							signalInfo = searchForSignal((Signal) obj, replicas.values());
-							System.out.println("MOVED primary");
-						} else {
-							System.out.println("MOVED replica");
-							signalInfo = searchForSignal((Signal) obj, map.values());
-						}
-						signalInfo.setCopyAddress(message.getSrc());
-					}
+					} 
 				} else if (obj != null && obj instanceof Tuple<?, ?>) {
 					
 					if (op == Operation.NODEUP) {
 						// member is NEW NODE
 						Tuple<Address, List<Address>> tuple = (Tuple<Address, List<Address>>) obj;
-						Address member = tuple.getFirst();
-						List<Address> members = tuple.getSecond();
-						int numMembers = members.size();
-						
-						int formerSize = mapSize.get();
-						while (mapSize.get() > formerSize * (numMembers - 1) / numMembers) {
-		
-//							System.out.println("MAPSIZE: "+ mapSize.get() + " CUENTA: " + formerSize * (numMembers - 1) / numMembers);
-							
-							BlockingQueue<SignalInfo> list;
-							SignalInfo sInfo;
-							while(true) {
-								 list = map.get(nextInLine.getAndDecrement() % THREADS);
-								mapSize.decrementAndGet();
-								sInfo = list.poll();
-								if (sInfo != null) {
-									break;
-								}
-							}		
-							
-							//TODO ask what happens if there is no backups in this node (should not happen)
-							while (true) {
-								Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
-								list = replicas.get(tuple2.getFirst());
-								if (list != null) {
-									break;
-								}
-								list = replicas.get(tuple2.getSecond());
-								if (list != null) {
-									break;
-								}
-							}
-							
-							SignalInfo sInfo2 = list.poll();
-							replSize.decrementAndGet();
-		
-							System.out.println("EQUALS PRIMARY vs REPLICA :" + sInfo.getSignal().equals(sInfo2.getSignal()));
-							try {
-								send(new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, false, sInfo.getCopyAddress()), member);
-//								send(new MyMessage<Signal>(sInfo2.getSignal(), Operation.MOVE, true, sInfo2.getCopyAddress()), member);
-							} catch (Exception e) {
-								e.printStackTrace();
-							}
-						}
+						new Thread(new NewNodeTask(map, mapSize, nextInLine, replicas, replSize, THREADS, dispatcher, tuple)).start();
 					}
 				}
 			}
 		}
 	}
 
-	private void handleRequestMessage(Message message) {
+	private void handleRequestMessage(final Message message) {
 
 		final RequestMessage reqMessage = (RequestMessage) message.getObject();
 		final Object obj = reqMessage.getContent();
@@ -239,6 +158,89 @@ public class MyWorker implements Runnable {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
+				} else if (myMessage.getOp() == Operation.MOVE) {
+					
+					if (!myMessage.isReplica()) {
+//						System.out.println("Moving primary");
+						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
+						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
+						mapSize.incrementAndGet();
+						
+						
+						NotifyingFuture<Object> future = dispatcher.sendMessage(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, false, channel.getAddress()));
+						future.setListener(new FutureListener<Object>() {
+							
+							@Override
+							public void futureDone(Future<Object> future) {
+								
+								try {
+									dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
+								} catch (Exception e) {
+									// TODO Auto-generated catch block
+									e.printStackTrace();
+								}
+							}
+						});
+						
+//						try {
+//							send(new MyMessage<Signal>((Signal) obj, Operation.MOVED, false, channel.getAddress()), myMessage.getCopyAddress());
+//						} catch (Exception e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+						
+					} else {
+//						System.out.println("Moving replica");
+						BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
+						if (list == null) {
+							list = new LinkedBlockingQueue<>();
+							replicas.put(myMessage.getCopyAddress(), list);
+						}
+						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), false));
+						replSize.incrementAndGet();
+						
+						
+						NotifyingFuture<Object> future = dispatcher.sendMessage(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, true, channel.getAddress()));
+						future.setListener(new FutureListener<Object>() {
+							
+							@Override
+							public void futureDone(Future<Object> future) {
+								
+								try {
+									dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
+								} catch (Exception e) {
+									// TODO Auto-generated catch block
+									e.printStackTrace();
+								}
+							}
+						});
+						
+						
+//						try {
+//							send(new MyMessage<Signal>((Signal) obj, Operation.MOVED, true, channel.getAddress()), myMessage.getCopyAddress());
+//						} catch (Exception e) {
+//							// TODO Auto-generated catch block
+//							e.printStackTrace();
+//						}
+					}
+				} else if (myMessage.getOp() == Operation.MOVED) {
+					
+					SignalInfo signalInfo;
+					if (!myMessage.isReplica()) {
+						signalInfo = searchForSignal(signal, replicas.values());
+//						System.out.println("MOVED primary");
+					} else {
+//						System.out.println("MOVED replica");
+						signalInfo = searchForSignal(signal, map.values());
+					}
+					signalInfo.setCopyAddress(message.getSrc());
+					
+					try {
+						dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
 			}
 		}
@@ -256,7 +258,7 @@ public class MyWorker implements Runnable {
 		return null;
 	}
 
-	private <T> void send(MyMessage<T> myMessage, Address destAddress) throws Exception {
-		channel.send(new Message(destAddress, null, myMessage));
-	}
+//	private <T> void send(MyMessage<T> myMessage, Address destAddress) throws Exception {
+//		channel.send(new Message(destAddress, null, myMessage));
+//	}
 }

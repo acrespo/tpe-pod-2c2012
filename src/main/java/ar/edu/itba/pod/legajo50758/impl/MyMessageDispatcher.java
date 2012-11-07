@@ -12,6 +12,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jgroups.Address;
 import org.jgroups.Channel;
+import org.jgroups.util.FutureListener;
+import org.jgroups.util.NotifyingFuture;
 
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
@@ -31,7 +33,7 @@ public class MyMessageDispatcher {
 		addressToFuture = Multimaps.synchronizedMultimap(HashMultimap.<Address, MyFutureImpl<?>>create());
 	}
 	
-	public <T> Future<T> sendMessage(Address address, Serializable obj) {
+	public <T> NotifyingFuture<T> sendMessage(Address address, Serializable obj) {
 
 		final int id = idGenerator.getAndIncrement();
 		final MyFutureImpl<T> future = new MyFutureImpl<T>(id);
@@ -63,13 +65,14 @@ public class MyMessageDispatcher {
 	}
 	
 	
-	private static class MyFutureImpl<T> implements Future<T> {
+	private static class MyFutureImpl<T> implements NotifyingFuture<T> {
 
 		private T response;
 		private final CountDownLatch isDone = new CountDownLatch(1);
 		private boolean disconnected;
 		private Exception e;
 		private final int id;
+		private FutureListener<T> listener;
 		
 		public MyFutureImpl(int id) {
 			this.id = id;
@@ -79,7 +82,7 @@ public class MyMessageDispatcher {
 			return id;
 		}
 		
-		public void setResponse(Serializable content) {
+		public synchronized void setResponse(Serializable content) {
 			
 			if (isDone.getCount() == 0 || disconnected) {
 				throw new IllegalStateException();
@@ -91,29 +94,37 @@ public class MyMessageDispatcher {
 				
 				response = null;
 			}
-			isDone.countDown();
+			done();
 			
 		}
 
-		public void nodeDisconnected(Exception e) {
+		public synchronized void nodeDisconnected(Exception e) {
 			
 			if (isDone.getCount() != 0) {
 				disconnected = true;
 				this.e = e;
 			}
+			done();
+		}
+
+		private void done() {
+			
 			isDone.countDown();
+			if (listener != null) {
+				listener.futureDone(this);
+			}
 		}
 		
-		public void nodeDisconnected() {
+		public synchronized void nodeDisconnected() {
 
 			if (isDone.getCount() != 0) {
 				disconnected = true;
 			}
-			isDone.countDown();
+			done();
 		}
 
 		@Override
-		public boolean cancel(boolean arg0) {
+		public synchronized boolean cancel(boolean arg0) {
 			return false;
 		}
 
@@ -121,10 +132,12 @@ public class MyMessageDispatcher {
 		public T get() throws InterruptedException, ExecutionException {
 			
 			isDone.await();
-			if (disconnected) {
-				throw new ExecutionException("The reciepient disconnected before answering", e);
+			synchronized (this) {
+				if (disconnected) {
+					throw new ExecutionException("The reciepient disconnected before answering", e);
+				}
+				return response;				
 			}
-			return response;
 		}
 
 		@Override
@@ -145,6 +158,16 @@ public class MyMessageDispatcher {
 		public boolean isDone() {
 			return isDone.getCount() == 0;
 		}
-		
+
+		@Override
+		public synchronized NotifyingFuture<T> setListener(FutureListener<T> listener) {
+			
+			if (isDone() && listener != null) {
+				listener.futureDone(this);
+			}
+			this.listener = listener;
+
+			return this;
+		}
 	}
 }
