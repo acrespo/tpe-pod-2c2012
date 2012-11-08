@@ -8,9 +8,9 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class SignalInfo implements Serializable {
 
-	Signal signal;
-	Address copyAddress;
-	boolean isPrimary;
+	private final Signal signal;
+	private Address copyAddress;
+	private final boolean isPrimary;
 	
 	public SignalInfo(Signal signal, Address copyAddress, boolean isPrimary) {
 		this.signal = signal;

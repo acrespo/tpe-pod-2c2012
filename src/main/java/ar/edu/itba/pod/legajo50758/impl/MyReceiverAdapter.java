@@ -30,31 +30,40 @@ public class MyReceiverAdapter extends ReceiverAdapter {
 	}
 	
 	@Override
-	public void viewAccepted(View view) {
+	public void viewAccepted(View newView) {
 		
+		System.out.println("TOPOLOGY CHANGE!!!");
 		if (currentView == null) {
-			currentView = view;
+			currentView = newView;
 			return;
 		}
+		System.out.println("Former members: " + currentView.getMembers());
+		System.out.println("New members: " + newView.getMembers());
 		
-		for (Address member: view.getMembers()) {
+		for (Address member: newView.getMembers()) {
 			if (!currentView.getMembers().contains(member)) {
 				// member is NEW NODE
-				Tuple<Address, List<Address>> tuple = new Tuple<>(member, view.getMembers());
+				Tuple<Address, List<Address>> tuple = new Tuple<>(member, newView.getMembers());
 				MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEUP);
 				msgQueue.add(new Message(channel.getAddress(), myMsg));
-				return;
-			}
-		}
-		for (Address currMember: currentView.getMembers()) {
-			if (!view.getMembers().contains(currMember)) {
-				//TODO currMember is DOWN
-				Tuple<Address, List<Address>> tuple = new Tuple<>(currMember, null);
-				MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEDOWN);
-				msgQueue.add(new Message(channel.getAddress(), myMsg));
+				currentView = newView;
+				System.out.println("NOW our members are :" + currentView.getMembers());
 				return;
 			}
 		}
 		
+		for (Address currMember: currentView.getMembers()) {
+			if (!newView.getMembers().contains(currMember)) {
+				//TODO currMember is DOWN
+				System.out.println("NODE IS DOWN");
+				Tuple<Address, List<Address>> tuple = new Tuple<>(currMember, newView.getMembers());
+				MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEDOWN);
+				msgQueue.add(new Message(channel.getAddress(), myMsg));
+				currentView = newView;
+				System.out.println("NOW our members are :" + currentView.getMembers());
+				return;
+			}
+		}
+
 	}
 }

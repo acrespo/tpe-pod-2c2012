@@ -32,7 +32,6 @@ public class Node implements SignalProcessor, SPNode {
 	private AtomicInteger mapSize = new AtomicInteger(0);
 	private AtomicInteger nextInLine = new AtomicInteger(0);
 	
-//	private ExecutorService pool;
 	private final JChannel channel; 
 
 	private AtomicInteger receivedSignals = new AtomicInteger(0);
@@ -42,7 +41,7 @@ public class Node implements SignalProcessor, SPNode {
 	private final Thread worker;
 	
 	private final MyMessageDispatcher dispatcher;
-	private AtomicBoolean standalone = new AtomicBoolean(true);
+//	private AtomicBoolean standalone = new AtomicBoolean(true);
 	
 	public Node(int nThreads) throws Exception {
 		
@@ -54,7 +53,6 @@ public class Node implements SignalProcessor, SPNode {
 			map.put(i, new LinkedBlockingQueue<SignalInfo>());
 		}
 		dispatcher = new MyMessageDispatcher(channel);
-//		pool = Executors.newFixedThreadPool(THREADS);
 		this.worker = new Thread(new MyWorker(msgQueue, channel, map, replicas, mapSize, nextInLine, dispatcher, THREADS, replSize));
 		worker.start();
 	}
@@ -77,9 +75,7 @@ public class Node implements SignalProcessor, SPNode {
 			e.printStackTrace();
 			throw new RemoteException();
 		}
-//		System.out.println("connecting with cluster:" + cluster);
-		
-		//TODO REBALANCEAR
+		System.out.println("connecting with cluster:" + cluster);		
 	}
 
 	private boolean isEmpty() {
@@ -101,15 +97,17 @@ public class Node implements SignalProcessor, SPNode {
 		receivedSignals.set(0);
 		cluster = null;
 		
-//		System.out.println(standalone.get());
-		if (channel.isConnected() && !standalone.get()) {
+		System.out.println("signals cleared!");
+		System.out.println("channel.isConnected?: " + channel.isConnected());
+		if (channel.isConnected()) {
 			try {
-				channel.send(new Message(null, null, "Channel disconnected"));
+//				channel.send(new Message(null, null, "Channel disconnected"));
 			} catch (Exception e) {
 				e.printStackTrace();
 				throw new RemoteException();
 			}
 			channel.disconnect();
+			System.out.println("channel disconnected");
 		}
 	}
 
@@ -117,6 +115,11 @@ public class Node implements SignalProcessor, SPNode {
 		for (BlockingQueue<SignalInfo> list: map.values()) {
 			list.clear();
 		}		
+		for (BlockingQueue<SignalInfo> list: replicas.values()) {
+			list.clear();
+		} 
+		mapSize.set(0);
+		replSize.set(0);
 	}
 
 	@Override

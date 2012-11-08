@@ -24,12 +24,14 @@ public class NewNodeTask implements Runnable {
 	private MyMessageDispatcher dispatcher;
 	private Address newMember;
 	private List<Address> members;
+	private Address myAddress;
 	
 	public NewNodeTask(
 			ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
 			AtomicInteger mapSize, AtomicInteger nextInLine,
 			ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas,
-			AtomicInteger replSize, int THREADS, MyMessageDispatcher dispatcher, Tuple<Address, List<Address>> tuple) {
+			AtomicInteger replSize, int THREADS, MyMessageDispatcher dispatcher, Tuple<Address, List<Address>> tuple, 
+			Address myAddress) {
 
 		this.map = map;
 		this.replicas = replicas;
@@ -40,6 +42,7 @@ public class NewNodeTask implements Runnable {
 		this.replSize = replSize;
 		this.newMember = tuple.getFirst();
 		this.members = tuple.getSecond();
+		this.myAddress = myAddress;
 	}
 
 	@Override
@@ -56,20 +59,24 @@ public class NewNodeTask implements Runnable {
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while (replSize.get() > formerSize * (numMembers  - 1) / numMembers) {
 			
+//			System.out.println("CHOOOSING RANDOM REPLICA TO BALANCE");
+//			Utils.nodeSnapshot(myAddress, map, replicas);
+			
+			
 			//TODO ask what happens if there is no backups in this node (should not happen)
 			BlockingQueue<SignalInfo> list;
 			while (true) {
 				Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
 				list = replicas.get(tuple2.getFirst());
-				if (list != null) {
+				if (list != null && !tuple2.getFirst().equals(newMember)) {
 					break;
 				}
 				list = replicas.get(tuple2.getSecond());
-				if (list != null) {
+				if (list != null && !tuple2.getSecond().equals(newMember)) {
 					break;
 				}
 			}
-			
+
 			SignalInfo sInfo2 = list.poll();
 			replSize.decrementAndGet();
 			
@@ -94,8 +101,6 @@ public class NewNodeTask implements Runnable {
 		int formerSize = mapSize.get();
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while (mapSize.get() > formerSize * (numMembers - 1) / numMembers) {
-
-//			System.out.println("MAPSIZE: "+ mapSize.get() + " CUENTA: " + formerSize * (numMembers - 1) / numMembers);
 			
 			BlockingQueue<SignalInfo> list;
 			SignalInfo sInfo;
