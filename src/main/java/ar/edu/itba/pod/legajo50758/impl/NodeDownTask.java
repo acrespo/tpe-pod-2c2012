@@ -6,6 +6,7 @@ import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.jgroups.Address;
 import org.jgroups.util.NotifyingFuture;
@@ -14,36 +15,49 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class NodeDownTask implements Runnable {
 
-	private Queue<SignalInfo> lostReplicas;
-	private BlockingQueue<SignalInfo> lostPrimaries;
-	private MyMessageDispatcher dispatcher;
-	private List<Address> members;
-	private Address myAddress;
+	private final Queue<SignalInfo> lostReplicas;
+	private final BlockingQueue<SignalInfo> lostPrimaries;
+	private final MyMessageDispatcher dispatcher;
+	private final List<Address> members;
+	private final Address myAddress;
+	private final MyWorker worker;
+	private final AtomicBoolean degradedMode;
 
 	public NodeDownTask(BlockingQueue<SignalInfo> lostPrimaries,
 			Queue<SignalInfo> lostReplicas, MyMessageDispatcher dispatcher,
-			List<Address> members, Address myAddress) {
+			List<Address> members, Address myAddress, MyWorker worker, AtomicBoolean degradedMode) {
 		
 		this.lostPrimaries = lostPrimaries;
 		this.lostReplicas = lostReplicas;
 		this.dispatcher = dispatcher;
 		this.members = members;
 		this.myAddress = myAddress;
+		this.worker = worker;
+		this.degradedMode = degradedMode;
 	}
 
 	@Override
 	public void run() {
 		
-		if (lostPrimaries != null && !lostPrimaries.isEmpty()) {
-			distributePrimaries();
+		try { 
+			if (lostPrimaries != null && !lostPrimaries.isEmpty()) {
+				distributePrimaries();
+			}
+			if (lostReplicas != null && !lostReplicas.isEmpty()) {
+				distributeReplicas();
+			}
+			worker.phaseEnd(members.size());
+			
+		} catch (Exception e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
 		}
-		if (lostReplicas != null && !lostReplicas.isEmpty()) {
-			distributeReplicas();
-		}
-
+		
+		degradedMode.set(false);
+		//TODO resumir trabajos de procesamiento
 	}
 
-	private void distributeReplicas() {
+	private void distributeReplicas() throws Exception {
 		
 		SignalInfo sInfo;
 		List<Future<Object>> futureResponses = new ArrayList<>();
@@ -68,9 +82,11 @@ public class NodeDownTask implements Runnable {
 				e.printStackTrace();
 			}
 		}
+		
+		worker.phaseEnd(members.size());
 	}
 
-	private void distributePrimaries() {
+	private void distributePrimaries() throws Exception {
 		
 		SignalInfo sInfo;
 		List<Future<Object>> futureResponses = new ArrayList<>();
@@ -95,5 +111,7 @@ public class NodeDownTask implements Runnable {
 				e.printStackTrace();
 			}
 		}
+		
+		worker.phaseEnd(members.size());
 	}
 }

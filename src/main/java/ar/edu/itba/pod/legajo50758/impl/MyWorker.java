@@ -11,6 +11,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jgroups.Address;
@@ -24,22 +26,24 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class MyWorker implements Runnable {
 
-	private BlockingQueue<Message> msgQueue;
-	private JChannel channel;
-	private ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
-	private ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
-	private AtomicInteger nextInLine;
-	private AtomicInteger mapSize;
+	private final BlockingQueue<Message> msgQueue;
+	private final JChannel channel;
+	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
+	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
+	private final AtomicInteger nextInLine;
+	private final AtomicInteger mapSize;
 	private final MyMessageDispatcher dispatcher;
-	private ExecutorService pool;
+	private final ExecutorService pool;
 	private final int THREADS;
-	private AtomicInteger replSize;
+	private final AtomicInteger replSize;
+	private final Semaphore phaseCounter = new Semaphore(0);
+	private final AtomicBoolean degradedMode;
 
 	public MyWorker(BlockingQueue<Message> msqQueue, JChannel channel,
 			ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
 			ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas,
 			AtomicInteger mapSize, AtomicInteger nextInLine,
-			MyMessageDispatcher dispatcher, final int THREADS, AtomicInteger replSize) {
+			MyMessageDispatcher dispatcher, final int THREADS, AtomicInteger replSize, AtomicBoolean degradedMode) {
 		
 		this.msgQueue = msqQueue;
 		this.channel = channel;
@@ -51,6 +55,7 @@ public class MyWorker implements Runnable {
 		this.THREADS = THREADS;
 		pool = Executors.newFixedThreadPool(THREADS);
 		this.replSize = replSize;
+		this.degradedMode = degradedMode;
 	}
 
 	@Override
@@ -64,7 +69,8 @@ public class MyWorker implements Runnable {
 				message = msgQueue.take();
 			} catch (InterruptedException e) {
 				// TODO Auto-generated catch block
-				e.printStackTrace();
+//				e.printStackTrace();
+				return;
 			}
 
 			if (message.getObject() instanceof RequestMessage) {
@@ -80,28 +86,13 @@ public class MyWorker implements Runnable {
 	
 				if (obj != null && obj instanceof Signal) {
 	
-					if (op == Operation.ADD) {
-						if (!myMessage.isReplica()) {
-							BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
-							list.add(new SignalInfo((Signal) obj, myMessage.getCopyAddress(), true));
-							mapSize.incrementAndGet();
-						} else {
-							BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
-							if (list == null) {
-								list = new LinkedBlockingQueue<>();
-								replicas.put(myMessage.getCopyAddress(), list);
-							}
-							list.add(new SignalInfo((Signal) obj, myMessage.getCopyAddress(), false));
-							replSize.incrementAndGet();
-						}
-	
-					} 
+			 
 				} else if (obj != null && obj instanceof Tuple<?, ?>) {
 					
 					if (op == Operation.NODEUP) {
 						// member is NEW NODE
 						Tuple<Address, List<Address>> tuple = (Tuple<Address, List<Address>>) obj;
-						new Thread(new NewNodeTask(map, mapSize, nextInLine, replicas, replSize, THREADS, dispatcher, tuple, channel.getAddress())).start();
+						new Thread(new NewNodeTask(map, mapSize, nextInLine, replicas, replSize, THREADS, dispatcher, tuple, channel.getAddress(), this, degradedMode)).start();
 					
 					} else if (op == Operation.NODEDOWN) {
 						
@@ -121,9 +112,11 @@ public class MyWorker implements Runnable {
 //						Utils.printSignals(lostPrimaries, "Lost Primaries: ");
 //						Utils.printSignals(lostReplicas, "Lost Replicas: ");
 						
-						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress())).start();
+						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress(), this, degradedMode)).start();
 					}
 				}
+			} else if (message.getObject() instanceof PhaseEnd) {
+				phaseCounter.release();
 			}
 		}
 	}
@@ -139,7 +132,31 @@ public class MyWorker implements Runnable {
 			if (myMessage.getContent() != null && myMessage.getContent() instanceof Signal) {
 
 				Signal signal = (Signal) myMessage.getContent();
-				if (myMessage.getOp() == Operation.QUERY) {
+				
+				if (myMessage.getOp() == Operation.ADD) {
+					System.out.println("ADD");
+					if (!myMessage.isReplica()) {
+						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
+						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
+						mapSize.incrementAndGet();
+					} else {
+						BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
+						if (list == null) {
+							list = new LinkedBlockingQueue<>();
+							replicas.put(myMessage.getCopyAddress(), list);
+						}
+						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), false));
+						replSize.incrementAndGet();
+					}
+					
+					try {
+						dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+
+				} else if (myMessage.getOp() == Operation.QUERY) {
 
 					System.out.println("Processing Local signals");
 					List<Future<Result>> futures = new ArrayList<>(THREADS);
@@ -289,4 +306,11 @@ public class MyWorker implements Runnable {
 			}
 		}
 	}
+	
+	public void phaseEnd(int numMembers) throws Exception {
+		System.out.println("broadcasting phase end");
+		channel.send(new Message(null, new PhaseEnd()));
+		phaseCounter.acquire(numMembers);
+	}
+	
 }

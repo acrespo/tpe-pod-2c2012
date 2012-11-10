@@ -26,35 +26,37 @@ import ar.edu.itba.pod.legajo50758.api.SignalProcessor;
 public class Node implements SignalProcessor, SPNode {
 
 	private final int THREADS;
-	private ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();
-	private ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas = new ConcurrentHashMap<>();
-	private AtomicInteger replSize = new AtomicInteger(0);
-	private AtomicInteger mapSize = new AtomicInteger(0);
-	private AtomicInteger nextInLine = new AtomicInteger(0);
+	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();
+	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas = new ConcurrentHashMap<>();
+	private final AtomicInteger replSize = new AtomicInteger(0);
+	private final AtomicInteger mapSize = new AtomicInteger(0);
+	private final AtomicInteger nextInLine = new AtomicInteger(0);
 	
 	private final JChannel channel; 
 
-	private AtomicInteger receivedSignals = new AtomicInteger(0);
+	private final AtomicInteger receivedSignals = new AtomicInteger(0);
 	private String cluster = null;
 	
-	private BlockingQueue<Message> msgQueue = new LinkedBlockingQueue<Message>();
-	private final Thread worker;
+	private final BlockingQueue<Message> msgQueue = new LinkedBlockingQueue<Message>();
+	private final MyWorker worker;
+	private Thread workerThread;
+	private final AtomicBoolean degradedMode = new AtomicBoolean(true);
 	
 	private final MyMessageDispatcher dispatcher;
-//	private AtomicBoolean standalone = new AtomicBoolean(true);
+	private final MyReceiverAdapter receiver;
 	
 	public Node(int nThreads) throws Exception {
 		
 		THREADS = nThreads;
 		channel = new JChannel("jgroups.xml");
-		channel.setReceiver(new MyReceiverAdapter(channel, msgQueue));
 		
 		for(int i = 0; i < THREADS; i++) {
 			map.put(i, new LinkedBlockingQueue<SignalInfo>());
 		}
 		dispatcher = new MyMessageDispatcher(channel);
-		this.worker = new Thread(new MyWorker(msgQueue, channel, map, replicas, mapSize, nextInLine, dispatcher, THREADS, replSize));
-		worker.start();
+		worker = new MyWorker(msgQueue, channel, map, replicas, mapSize, nextInLine, dispatcher, THREADS, replSize, degradedMode);
+		receiver = new MyReceiverAdapter(channel, msgQueue, worker, workerThread, degradedMode);
+		channel.setReceiver(receiver);
 	}
 	
 	@Override
@@ -75,7 +77,7 @@ public class Node implements SignalProcessor, SPNode {
 			e.printStackTrace();
 			throw new RemoteException();
 		}
-		System.out.println("connecting with cluster:" + cluster);		
+		System.out.println("connecting with cluster:" + cluster);
 	}
 
 	private boolean isEmpty() {
@@ -90,9 +92,7 @@ public class Node implements SignalProcessor, SPNode {
 
 	@Override
 	public void exit() throws RemoteException {
-		
-		//TODO REBALANCEARRRRRR
-		
+				
 		clear();
 		receivedSignals.set(0);
 		cluster = null;
@@ -107,8 +107,13 @@ public class Node implements SignalProcessor, SPNode {
 				throw new RemoteException();
 			}
 			channel.disconnect();
+			workerThread.interrupt();
+			workerThread = null;
+			receiver.resetView();
 			System.out.println("channel disconnected");
 		}
+		
+		degradedMode.set(true);
 	}
 
 	private void clear() {
@@ -129,31 +134,36 @@ public class Node implements SignalProcessor, SPNode {
 				receivedSignals.longValue(),
 				mapSize.longValue(), 
 				replSize.get(), 
-				true);
+				degradedMode.get());
 	}
 
 	@Override
 	public void add(Signal signal) throws RemoteException {
-		//elegir quien la almacena y enviarsela
-		//idem para almacenar la replica
-		//DONE
-		//TODO handlear el caso en que me mandan un findsimiliarTo antes de que la señal se haya
-		//agregado efectivamente (read your writes). Guardate la señal vos hasta que te llegue un ACK.
-		//EN MODO DEGRADADO! ;)
-		
 		
 		List<Address> members = channel.getView().getMembers();
 		Tuple<Address, Address> tuple = Utils.chooseRandomMember(members);
 		Address primaryCopyAddress = tuple.getFirst();
 		Address backupAddress = tuple.getSecond();
 		
+		LinkedList<Future<Object>> futures = new LinkedList<>();
 		try {
-			send(new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress), primaryCopyAddress);
-			send(new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress), backupAddress);
+			futures.add(dispatcher.sendMessage(primaryCopyAddress, new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress)));
+			futures.add(dispatcher.sendMessage(backupAddress, new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress)));
+//			send(new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress), primaryCopyAddress);
+//			send(new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress), backupAddress);
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 			throw new RemoteException();
+		}
+				
+		for (final Future<Object> future : futures) {
+			try {
+				future.get();
+			} catch (InterruptedException | ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 	}
 
@@ -166,10 +176,7 @@ public class Node implements SignalProcessor, SPNode {
 			List<Future<Result>> futureResults = new ArrayList<>();
 			List<Result> results = new LinkedList<>();
 			for (final Address address : channel.getView().getMembers()) {
-	
-	//			if (address != channel.getAddress()) {
-					futureResults.add(dispatcher.<Result>sendMessage(address, new MyMessage<Signal>(signal, Operation.QUERY)));
-	//			}
+				futureResults.add(dispatcher.<Result>sendMessage(address, new MyMessage<Signal>(signal, Operation.QUERY)));
 			}
 			
 			for (final Future<Result> future : futureResults) {
@@ -193,9 +200,4 @@ public class Node implements SignalProcessor, SPNode {
 		}	
 		return null;
 	}
-	
-	private <T> void send(MyMessage<T> myMessage, Address destAddress) throws Exception {
-		channel.send(new Message(destAddress, null, myMessage));
-	}
-	
 }
