@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -16,18 +15,18 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class NewNodeTask implements Runnable {
 
-	private ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
-	private ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
-	private AtomicInteger nextInLine;
-	private AtomicInteger mapSize;
+	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
+	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
+	private final AtomicInteger nextInLine;
+	private final AtomicInteger mapSize;
 	private final int THREADS;
-	private AtomicInteger replSize;
-	private MyMessageDispatcher dispatcher;
-	private Address newMember;
-	private List<Address> members;
-	private Address myAddress;
-	private MyWorker worker;
-	private AtomicBoolean degradedMode;
+	private final AtomicInteger replSize;
+	private final MyMessageDispatcher dispatcher;
+	private final Address newMember;
+	private final List<Address> members;
+	private final Address myAddress;
+	private final MyWorker worker;
+	private final AtomicBoolean degradedMode;
 
 	public NewNodeTask(
 			ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
@@ -100,21 +99,15 @@ public class NewNodeTask implements Runnable {
 			replSize.decrementAndGet();
 
 			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo2.getSignal(), Operation.MOVE, true,sInfo2.getCopyAddress());
-			NotifyingFuture<Object> f = dispatcher.sendMessage(newMember, myMessage);
+			NotifyingFuture<Object> f = dispatcher.send(newMember, myMessage);
 			futureResponses.add(f);
 		}
 
-		for (final Future<Object> future : futureResponses) {
-			try {
-				future.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
+		Utils.waitForResponses(futureResponses);
 		
 		worker.phaseEnd(members.size());
 	}
+
 
 	private void balancePrimaries() throws Exception {
 
@@ -135,18 +128,11 @@ public class NewNodeTask implements Runnable {
 			}
 
 			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, false, sInfo.getCopyAddress());
-			NotifyingFuture<Object> f = dispatcher.sendMessage(newMember, myMessage);
+			NotifyingFuture<Object> f = dispatcher.send(newMember, myMessage);
 			futureResponses.add(f);
 		}
 
-		for (final Future<Object> future : futureResponses) {
-			try {
-				future.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
+		Utils.waitForResponses(futureResponses);
 		
 		worker.phaseEnd(members.size());
 	}

@@ -8,6 +8,8 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class SignalInfo implements Serializable {
 
+	private static final long serialVersionUID = -2878451377274694626L;
+	
 	private final Signal signal;
 	private Address copyAddress;
 	private final boolean isPrimary;

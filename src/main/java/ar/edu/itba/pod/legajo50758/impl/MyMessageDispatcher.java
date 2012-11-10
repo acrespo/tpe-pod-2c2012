@@ -5,13 +5,12 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import org.jgroups.Address;
-import org.jgroups.Channel;
+import org.jgroups.JChannel;
 import org.jgroups.util.FutureListener;
 import org.jgroups.util.NotifyingFuture;
 
@@ -21,28 +20,28 @@ import com.google.common.collect.Multimaps;
 
 public class MyMessageDispatcher {
 
+	private final JChannel channel;
 	private final AtomicInteger idGenerator = new AtomicInteger(0);
 	private final Multimap<Address, MyFutureImpl<?>> addressToFuture;
 	private final Map<Integer, MyFutureImpl<?>> futures;
-	private final Channel channel;
 	
-	public MyMessageDispatcher(Channel channel) {
+	public MyMessageDispatcher(JChannel channel) {
 		
 		this.channel = channel;
 		futures = new ConcurrentHashMap<Integer, MyFutureImpl<?>>();
 		addressToFuture = Multimaps.synchronizedMultimap(HashMultimap.<Address, MyFutureImpl<?>>create());
 	}
 	
-	public <T> NotifyingFuture<T> sendMessage(Address address, Serializable obj) {
+	public <T> NotifyingFuture<T> send(Address address, Serializable content) {
 
 		final int id = idGenerator.getAndIncrement();
-		final MyFutureImpl<T> future = new MyFutureImpl<T>(id);
+		final MyFutureImpl<T> future = new MyFutureImpl<T>();
 
 		addressToFuture.put(address, future);
 		futures.put(id, future);
 
 		try {
-			channel.send(address, new RequestMessage(id, obj));
+			channel.send(address, new RequestMessage(id, content));
 		} catch (final Exception e) {
 			addressToFuture.remove(address, future);
 			futures.remove(id);
@@ -60,7 +59,7 @@ public class MyMessageDispatcher {
 		}
 	}
 
-	public void respondTo(Address address, int id, Serializable content) throws Exception {
+	public void respond(Address address, int id, Serializable content) throws Exception {
 		channel.send(address, new ResponseMessage(id, content));
 	}
 	
@@ -71,17 +70,9 @@ public class MyMessageDispatcher {
 		private final CountDownLatch isDone = new CountDownLatch(1);
 		private boolean disconnected;
 		private Exception e;
-		private final int id;
 		private FutureListener<T> listener;
 		
-		public MyFutureImpl(int id) {
-			this.id = id;
-		}
-
-		public int getId() {
-			return id;
-		}
-		
+		@SuppressWarnings("unchecked")
 		public synchronized void setResponse(Serializable content) {
 			
 			if (isDone.getCount() == 0 || disconnected) {

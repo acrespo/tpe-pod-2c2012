@@ -73,7 +73,8 @@ public class MyReceiverAdapter extends ReceiverAdapter {
 					if (!currentView.containsMember(member)) {
 						// member is NEW NODE
 						degradedMode.set(true);
-						//TODO para trabajos de procesamiento
+						//TODO parar trabajos de procesamiento
+						
 						Tuple<Address, List<Address>> tuple = new Tuple<>(member, newView.getMembers());
 						MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEUP);
 						msgQueue.add(new Message(channel.getAddress(), myMsg));
@@ -87,7 +88,8 @@ public class MyReceiverAdapter extends ReceiverAdapter {
 					if (!newView.containsMember(currMember)) {
 						//currMember is DOWN
 						degradedMode.set(true);
-						//TODO para trabajos de procesamiento
+						//TODO parar trabajos de procesamiento
+						
 						System.out.println("NODE IS DOWN");
 						Tuple<Address, List<Address>> tuple = new Tuple<>(currMember, newView.getMembers());
 						MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEDOWN);

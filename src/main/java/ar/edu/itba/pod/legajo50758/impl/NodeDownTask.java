@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -41,10 +40,10 @@ public class NodeDownTask implements Runnable {
 		
 		try { 
 			if (lostPrimaries != null && !lostPrimaries.isEmpty()) {
-				distributePrimaries();
+				distributeSignals(lostPrimaries, false);
 			}
 			if (lostReplicas != null && !lostReplicas.isEmpty()) {
-				distributeReplicas();
+				distributeSignals(lostReplicas, true);
 			}
 			worker.phaseEnd(members.size());
 			
@@ -57,61 +56,22 @@ public class NodeDownTask implements Runnable {
 		//TODO resumir trabajos de procesamiento
 	}
 
-	private void distributeReplicas() throws Exception {
+	private void distributeSignals(Queue<SignalInfo> queue, boolean replica) throws Exception {
 		
 		SignalInfo sInfo;
 		List<Future<Object>> futureResponses = new ArrayList<>();
-		while((sInfo = lostReplicas.poll()) != null) {
-			
-//			System.out.println("distributing replica");
-			
+		while((sInfo = queue.poll()) != null) {
+						
 			Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
 			Address chosen = tuple2.getFirst(); 
 					
-			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, true, myAddress);
-			NotifyingFuture<Object> f = dispatcher.sendMessage(chosen, myMessage);
+			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, replica, myAddress);
+			NotifyingFuture<Object> f = dispatcher.send(chosen, myMessage);
 
 			futureResponses.add(f);
 		}
 		
-		for (final Future<Object> future : futureResponses) {
-			try {
-				future.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		
-		worker.phaseEnd(members.size());
-	}
-
-	private void distributePrimaries() throws Exception {
-		
-		SignalInfo sInfo;
-		List<Future<Object>> futureResponses = new ArrayList<>();
-		while((sInfo = lostPrimaries.poll()) != null) {
-//			System.out.println("distributing primary");
-
-			
-			Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
-			Address chosen = tuple2.getFirst(); 
-					
-			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, false, myAddress);
-			NotifyingFuture<Object> f = dispatcher.sendMessage(chosen, myMessage);
-
-			futureResponses.add(f);
-		}
-		
-		for (final Future<Object> future : futureResponses) {
-			try {
-				future.get();
-			} catch (InterruptedException | ExecutionException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		}
-		
+		Utils.waitForResponses(futureResponses);
 		worker.phaseEnd(members.size());
 	}
 }

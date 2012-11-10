@@ -6,6 +6,8 @@ import org.jgroups.Address;
 
 public class MyMessage<T> implements Serializable {
 
+	private static final long serialVersionUID = 7048178676105024181L;
+	
 	private final T content;
 	private final Operation op;
 	private Boolean replica;

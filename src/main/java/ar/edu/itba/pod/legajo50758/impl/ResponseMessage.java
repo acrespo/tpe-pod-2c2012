@@ -4,6 +4,8 @@ import java.io.Serializable;
 
 public class ResponseMessage implements Serializable {
 
+	private static final long serialVersionUID = -3729304125719629253L;
+	
 	private final Serializable content;
 	private final int id;
 

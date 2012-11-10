@@ -146,8 +146,8 @@ public class Node implements SignalProcessor, SPNode {
 			
 			LinkedList<Future<Object>> futures = new LinkedList<>();
 			try {
-				futures.add(dispatcher.sendMessage(primaryCopyAddress, new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress)));
-				futures.add(dispatcher.sendMessage(backupAddress, new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress)));
+				futures.add(dispatcher.send(primaryCopyAddress, new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress)));
+				futures.add(dispatcher.send(backupAddress, new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress)));
 			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
@@ -178,7 +178,7 @@ public class Node implements SignalProcessor, SPNode {
 			List<Future<Result>> futureResults = new ArrayList<>();
 			List<Result> results = new LinkedList<>();
 			for (final Address address : channel.getView().getMembers()) {
-				futureResults.add(dispatcher.<Result>sendMessage(address, new MyMessage<Signal>(signal, Operation.QUERY)));
+				futureResults.add(dispatcher.<Result>send(address, new MyMessage<Signal>(signal, Operation.QUERY)));
 			}
 			
 			for (final Future<Result> future : futureResults) {

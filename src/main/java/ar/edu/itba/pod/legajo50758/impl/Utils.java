@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import org.jgroups.Address;
 
@@ -99,5 +101,17 @@ public class Utils {
 		}
 		System.out.println(msg + list);
 	}
+	
+	public static void waitForResponses(Iterable<Future<Object>> futureResponses) {
+		for (final Future<Object> future : futureResponses) {
+			try {
+				future.get();
+			} catch (InterruptedException | ExecutionException e) {
+				e.printStackTrace();
+			}
+		}
+	}
+	
+	
 	
 }

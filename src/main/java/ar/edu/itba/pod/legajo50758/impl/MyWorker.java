@@ -1,5 +1,6 @@
 package ar.edu.itba.pod.legajo50758.impl;
 
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -58,6 +59,7 @@ public class MyWorker implements Runnable {
 		this.degradedMode = degradedMode;
 	}
 
+	@SuppressWarnings("unchecked")
 	@Override
 	public void run() {
 
@@ -148,12 +150,7 @@ public class MyWorker implements Runnable {
 						replSize.incrementAndGet();
 					}
 					
-					try {
-						dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+					respond(message.getSrc(), reqMessage.getId(), null);
 
 				} else if (myMessage.getOp() == Operation.QUERY) {
 
@@ -161,12 +158,9 @@ public class MyWorker implements Runnable {
 					Result result = process(signal);
 					
 					System.out.println("Result " + result);
-					try {
-						dispatcher.respondTo(message.getSrc(), reqMessage.getId(), result);
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+					
+					respond(message.getSrc(), reqMessage.getId(), result);
+					
 				} else if (myMessage.getOp() == Operation.MOVE) {
 					
 					if (!myMessage.isReplica()) {
@@ -175,18 +169,12 @@ public class MyWorker implements Runnable {
 						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
 						mapSize.incrementAndGet();
 						
-						NotifyingFuture<Object> future = dispatcher.sendMessage(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, false, channel.getAddress()));
+						NotifyingFuture<Object> future = dispatcher.send(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, false, channel.getAddress()));
 						future.setListener(new FutureListener<Object>() {
 							
 							@Override
 							public void futureDone(Future<Object> future) {
-								
-								try {
-									dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
-								} catch (Exception e) {
-									// TODO Auto-generated catch block
-									e.printStackTrace();
-								}
+								respond(message.getSrc(), reqMessage.getId(), null);
 							}
 						});
 						
@@ -204,18 +192,12 @@ public class MyWorker implements Runnable {
 							list.add(new SignalInfo(signal, myMessage.getCopyAddress(), false));
 							replSize.incrementAndGet();
 							
-							NotifyingFuture<Object> future = dispatcher.sendMessage(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, true, channel.getAddress()));
+							NotifyingFuture<Object> future = dispatcher.send(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, true, channel.getAddress()));
 							future.setListener(new FutureListener<Object>() {
 								
 								@Override
 								public void futureDone(Future<Object> future) {
-									
-									try {
-										dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
-									} catch (Exception e) {
-										// TODO Auto-generated catch block
-										e.printStackTrace();
-									}
+									respond(message.getSrc(), reqMessage.getId(), null);
 								}
 							});
 						} else {
@@ -225,7 +207,7 @@ public class MyWorker implements Runnable {
 							Tuple<Address, Address> tuple = Utils.chooseRandomMember(membersExceptMe);	
 							
 							MyMessage<Signal> anotherMessage = new MyMessage<Signal>(signal, Operation.MOVE, true, myMessage.getCopyAddress());
-							NotifyingFuture<Object> f = dispatcher.sendMessage(tuple.getFirst(), anotherMessage);	
+							NotifyingFuture<Object> f = dispatcher.send(tuple.getFirst(), anotherMessage);	
 							
 //							try {
 //								f.get();
@@ -234,12 +216,7 @@ public class MyWorker implements Runnable {
 //								e.printStackTrace();
 //							}
 							
-							try {
-								dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
-							} catch (Exception e) {
-								// TODO Auto-generated catch block
-								e.printStackTrace();
-							}						
+							respond(message.getSrc(), reqMessage.getId(), null);						
 						}
 //						Utils.nodeSnapshot(channel.getAddress(), map, replicas);
 					}
@@ -269,12 +246,7 @@ public class MyWorker implements Runnable {
 					signalInfo.setCopyAddress(myMessage.getCopyAddress());
 					
 //					Utils.nodeSnapshot(channel.getAddress(), map, replicas);
-					try {
-						dispatcher.respondTo(message.getSrc(), reqMessage.getId(), null);
-					} catch (Exception e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+					respond(message.getSrc(), reqMessage.getId(), null);
 				}
 			}
 		}
@@ -293,10 +265,7 @@ public class MyWorker implements Runnable {
 		for (Future<Result> future : futures) {
 			try {
 				results.add(future.get());
-			} catch (InterruptedException e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			} catch (ExecutionException e) {
+			} catch (InterruptedException | ExecutionException e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
@@ -316,6 +285,15 @@ public class MyWorker implements Runnable {
 		System.out.println("broadcasting phase end");
 		channel.send(new Message(null, new PhaseEnd()));
 		phaseCounter.acquire(numMembers);
+	}
+	
+	private void respond(final Address address, final int id, Serializable content) {
+		
+		try {
+			dispatcher.respond(address, id, content);
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
 	}
 	
 }
