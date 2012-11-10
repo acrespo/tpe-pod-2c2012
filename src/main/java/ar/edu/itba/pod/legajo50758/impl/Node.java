@@ -15,6 +15,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.jgroups.Address;
 import org.jgroups.JChannel;
 import org.jgroups.Message;
+import org.jgroups.ReceiverAdapter;
+import org.jgroups.View;
 
 import ar.edu.itba.pod.legajo50758.api.NodeStats;
 import ar.edu.itba.pod.legajo50758.api.Result;
@@ -33,7 +35,8 @@ public class Node implements SignalProcessor, SPNode {
 	private final AtomicInteger nextInLine = new AtomicInteger(0);
 	
 	private final JChannel channel; 
-
+	private View currentView = null;
+	
 	private final AtomicInteger receivedSignals = new AtomicInteger(0);
 	private String cluster = null;
 	
@@ -55,7 +58,7 @@ public class Node implements SignalProcessor, SPNode {
 		}
 		dispatcher = new MyMessageDispatcher(channel);
 		worker = new MyWorker(msgQueue, channel, map, replicas, mapSize, nextInLine, dispatcher, THREADS, replSize, degradedMode);
-		receiver = new MyReceiverAdapter(channel, msgQueue, worker, workerThread, degradedMode);
+		receiver = new MyReceiverAdapter();
 		channel.setReceiver(receiver);
 	}
 	
@@ -100,16 +103,11 @@ public class Node implements SignalProcessor, SPNode {
 		System.out.println("signals cleared!");
 		System.out.println("channel.isConnected?: " + channel.isConnected());
 		if (channel.isConnected()) {
-			try {
-//				channel.send(new Message(null, null, "Channel disconnected"));
-			} catch (Exception e) {
-				e.printStackTrace();
-				throw new RemoteException();
-			}
+			
 			channel.disconnect();
 			workerThread.interrupt();
 			workerThread = null;
-			receiver.resetView();
+			currentView = null;
 			System.out.println("channel disconnected");
 		}
 		
@@ -140,30 +138,34 @@ public class Node implements SignalProcessor, SPNode {
 	@Override
 	public void add(Signal signal) throws RemoteException {
 		
-		List<Address> members = channel.getView().getMembers();
-		Tuple<Address, Address> tuple = Utils.chooseRandomMember(members);
-		Address primaryCopyAddress = tuple.getFirst();
-		Address backupAddress = tuple.getSecond();
-		
-		LinkedList<Future<Object>> futures = new LinkedList<>();
-		try {
-			futures.add(dispatcher.sendMessage(primaryCopyAddress, new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress)));
-			futures.add(dispatcher.sendMessage(backupAddress, new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress)));
-//			send(new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress), primaryCopyAddress);
-//			send(new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress), backupAddress);
-		} catch (Exception e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-			throw new RemoteException();
-		}
-				
-		for (final Future<Object> future : futures) {
+		if (channel.isConnected()) {
+			List<Address> members = channel.getView().getMembers();
+			Tuple<Address, Address> tuple = Utils.chooseRandomMember(members);
+			Address primaryCopyAddress = tuple.getFirst();
+			Address backupAddress = tuple.getSecond();
+			
+			LinkedList<Future<Object>> futures = new LinkedList<>();
 			try {
-				future.get();
-			} catch (InterruptedException | ExecutionException e) {
+				futures.add(dispatcher.sendMessage(primaryCopyAddress, new MyMessage<Signal>(signal, Operation.ADD, false, backupAddress)));
+				futures.add(dispatcher.sendMessage(backupAddress, new MyMessage<Signal>(signal, Operation.ADD, true, primaryCopyAddress)));
+			} catch (Exception e) {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
+				throw new RemoteException();
 			}
+					
+			for (final Future<Object> future : futures) {
+				try {
+					future.get();
+				} catch (InterruptedException | ExecutionException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		} else {
+			BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
+			list.add(new SignalInfo(signal, null, true));
+			mapSize.incrementAndGet();
 		}
 	}
 
@@ -197,7 +199,81 @@ public class Node implements SignalProcessor, SPNode {
 				}
 			}
 			return result;
-		}	
-		return null;
+		} else {
+			return worker.process(signal);
+		}
 	}
+	
+	private class MyReceiverAdapter extends ReceiverAdapter {
+
+		@Override
+		public void receive(Message message) {
+//			Utils.log("Received: %s: %s", new Object[] { message.getObject(), message.getSrc() });
+			msgQueue.add(message);
+		}
+		
+		@Override
+		public void viewAccepted(final View newView) {
+			
+			System.out.println("TOPOLOGY CHANGE!!!");
+			new Thread(new Runnable() {
+				
+				@Override
+				public void run() {
+					if (currentView == null) {
+						currentView = newView;
+						workerThread = new Thread(worker);
+						workerThread.start();		
+						
+						if (newView.size() > 1) {
+							
+							try {
+								worker.phaseEnd(newView.size());
+								worker.phaseEnd(newView.size());
+								worker.phaseEnd(newView.size());
+							} catch (Exception e) {
+								e.printStackTrace();
+							}
+							degradedMode.set(false);
+							//TODO resumir trabajos de procesamiento
+							
+						}
+						return;
+					}
+					System.out.println("Former members: " + currentView.getMembers());
+					System.out.println("New members: " + newView.getMembers());
+					
+					
+					for (Address member: newView.getMembers()) {
+						if (!currentView.containsMember(member)) {
+							// member is NEW NODE
+							degradedMode.set(true);
+							//TODO para trabajos de procesamiento
+							Tuple<Address, List<Address>> tuple = new Tuple<>(member, newView.getMembers());
+							MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEUP);
+							msgQueue.add(new Message(channel.getAddress(), myMsg));
+							currentView = newView;
+							System.out.println("NOW our members are :" + currentView.getMembers());
+							return;
+						}
+					}
+					
+					for (Address currMember: currentView.getMembers()) {
+						if (!newView.containsMember(currMember)) {
+							//currMember is DOWN
+							degradedMode.set(true);
+							//TODO para trabajos de procesamiento
+							System.out.println("NODE IS DOWN");
+							Tuple<Address, List<Address>> tuple = new Tuple<>(currMember, newView.getMembers());
+							MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEDOWN);
+							msgQueue.add(new Message(channel.getAddress(), myMsg));
+							currentView = newView;
+							System.out.println("NOW our members are :" + currentView.getMembers());
+							return;
+						}
+					}
+				}
+			}).start();
+		}		
+	}	
 }

@@ -134,7 +134,6 @@ public class MyWorker implements Runnable {
 				Signal signal = (Signal) myMessage.getContent();
 				
 				if (myMessage.getOp() == Operation.ADD) {
-					System.out.println("ADD");
 					if (!myMessage.isReplica()) {
 						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
 						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
@@ -159,33 +158,7 @@ public class MyWorker implements Runnable {
 				} else if (myMessage.getOp() == Operation.QUERY) {
 
 					System.out.println("Processing Local signals");
-					List<Future<Result>> futures = new ArrayList<>(THREADS);
-
-					for (BlockingQueue<SignalInfo> signals : map.values()) {
-						futures.add(pool.submit(new MyTask(signal, signals)));
-					}
-
-					List<Result> results = new ArrayList<>(THREADS);
-
-					for (Future<Result> future : futures) {
-						try {
-							results.add(future.get());
-						} catch (InterruptedException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						} catch (ExecutionException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-					}
-
-					Result result = new Result(signal);
-
-					for (Result res : results) {
-						for (Result.Item item : res.items()) {
-							result = result.include(item);
-						}
-					}
+					Result result = process(signal);
 					
 					System.out.println("Result " + result);
 					try {
@@ -305,6 +278,38 @@ public class MyWorker implements Runnable {
 				}
 			}
 		}
+	}
+
+	public Result process(Signal signal) {
+		
+		List<Future<Result>> futures = new ArrayList<>(THREADS);
+
+		for (BlockingQueue<SignalInfo> signals : map.values()) {
+			futures.add(pool.submit(new MyTask(signal, signals)));
+		}
+
+		List<Result> results = new ArrayList<>(THREADS);
+
+		for (Future<Result> future : futures) {
+			try {
+				results.add(future.get());
+			} catch (InterruptedException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			} catch (ExecutionException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+		}
+
+		Result result = new Result(signal);
+
+		for (Result res : results) {
+			for (Result.Item item : res.items()) {
+				result = result.include(item);
+			}
+		}
+		return result;
 	}
 	
 	public void phaseEnd(int numMembers) throws Exception {
