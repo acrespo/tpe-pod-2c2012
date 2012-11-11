@@ -49,7 +49,6 @@ public class NodeDownTask implements Runnable {
 			worker.phaseEnd(members.size());
 			
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		
@@ -63,7 +62,6 @@ public class NodeDownTask implements Runnable {
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while((sInfo = queue.poll()) != null) {
 						
-			
 			List<Address> allButMe = new LinkedList<>(members);
 			allButMe.remove(myAddress);
 			

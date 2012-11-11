@@ -86,10 +86,7 @@ public class MyWorker implements Runnable {
 				Object obj = myMessage.getContent();
 				Operation op = myMessage.getOp();
 	
-				if (obj != null && obj instanceof Signal) {
-	
-			 
-				} else if (obj != null && obj instanceof Tuple<?, ?>) {
+				if (obj != null && obj instanceof Tuple<?, ?>) {
 					
 					if (op == Operation.NODEUP) {
 						// member is NEW NODE
@@ -115,7 +112,6 @@ public class MyWorker implements Runnable {
 //						Utils.printSignals(lostReplicas, "Lost Replicas: ");
 						System.out.println("Lost Primaries: " + lostPrimaries.size());
 						System.out.println("Lost Replicas: " + lostReplicas.size());
-						
 						
 						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress(), this, degradedMode)).start();
 					}

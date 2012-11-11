@@ -59,7 +59,6 @@ public class NewNodeTask implements Runnable {
 			balanceReplicas();
 			worker.phaseEnd(members.size());
 		} catch (Exception e) {
-			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
 		degradedMode.set(false);

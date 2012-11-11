@@ -153,15 +153,9 @@ public class Node implements SignalProcessor, SPNode {
 				e.printStackTrace();
 				throw new RemoteException();
 			}
-					
-			for (final Future<Object> future : futures) {
-				try {
-					future.get();
-				} catch (InterruptedException | ExecutionException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-			}
+				
+			Utils.waitForResponses(futures);
+			
 		} else {
 			BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
 			list.add(new SignalInfo(signal, null, true));
@@ -180,7 +174,7 @@ public class Node implements SignalProcessor, SPNode {
 			for (final Address address : channel.getView().getMembers()) {
 				futureResults.add(dispatcher.<Result>send(address, new MyMessage<Signal>(signal, Operation.QUERY)));
 			}
-			
+						
 			for (final Future<Result> future : futureResults) {
 				try {
 					results.add(future.get());
@@ -249,6 +243,7 @@ public class Node implements SignalProcessor, SPNode {
 							// member is NEW NODE
 							degradedMode.set(true);
 							//TODO para trabajos de procesamiento
+							
 							Tuple<Address, List<Address>> tuple = new Tuple<>(member, newView.getMembers());
 							MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEUP);
 							msgQueue.add(new Message(channel.getAddress(), myMsg));
@@ -263,6 +258,7 @@ public class Node implements SignalProcessor, SPNode {
 							//currMember is DOWN
 							degradedMode.set(true);
 							//TODO para trabajos de procesamiento
+							
 							System.out.println("NODE IS DOWN");
 							Tuple<Address, List<Address>> tuple = new Tuple<>(currMember, newView.getMembers());
 							MyMessage<Tuple<Address, List<Address>>> myMsg = new MyMessage<>(tuple, Operation.NODEDOWN);
