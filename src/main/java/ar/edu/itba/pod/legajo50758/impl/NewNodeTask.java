@@ -3,7 +3,6 @@ package ar.edu.itba.pod.legajo50758.impl;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -15,38 +14,30 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
 
 public class NewNodeTask implements Runnable {
 
-	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
-	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
+	private final MySignalInfoMultimap<Integer> primaries;
+	private final MySignalInfoMultimap<Address> replicas;
 	private final AtomicInteger nextInLine;
-	private final AtomicInteger mapSize;
 	private final int THREADS;
-	private final AtomicInteger replSize;
 	private final MyMessageDispatcher dispatcher;
 	private final Address newMember;
 	private final List<Address> members;
-	private final Address myAddress;
 	private final MyWorker worker;
 	private final AtomicBoolean degradedMode;
 
 	public NewNodeTask(
-			ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
-			AtomicInteger mapSize, AtomicInteger nextInLine,
-			ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas,
-			AtomicInteger replSize, int THREADS,
+			MySignalInfoMultimap<Integer> primaries, AtomicInteger nextInLine,
+			MySignalInfoMultimap<Address> replicas, int THREADS,
 			MyMessageDispatcher dispatcher,
-			Tuple<Address, List<Address>> tuple, Address myAddress,
-			MyWorker worker, AtomicBoolean degradedMode) {
+			Tuple<Address, List<Address>> tuple, MyWorker worker, 
+			AtomicBoolean degradedMode) {
 
-		this.map = map;
+		this.primaries = primaries;
 		this.replicas = replicas;
 		this.nextInLine = nextInLine;
-		this.mapSize = mapSize;
 		this.dispatcher = dispatcher;
 		this.THREADS = THREADS;
-		this.replSize = replSize;
 		this.newMember = tuple.getFirst();
 		this.members = tuple.getSecond();
-		this.myAddress = myAddress;
 		this.worker = worker;
 		this.degradedMode = degradedMode;
 	}
@@ -67,40 +58,43 @@ public class NewNodeTask implements Runnable {
 
 	private void balanceReplicas() throws Exception {
 
-		int formerSize = replSize.get();
+		int formerSize = replicas.size();
 		int numMembers = members.size();
 		List<Future<Object>> futureResponses = new ArrayList<>();
-		while (replSize.get() > (formerSize +1) * (numMembers - 1) / numMembers) {
+		while (replicas.size() > (formerSize +1) * (numMembers - 1) / numMembers) {
 
-			// System.out.println("CHOOOSING RANDOM REPLICA TO BALANCE");
-			// Utils.nodeSnapshot(myAddress, map, replicas);
-
-			System.out.println("CUENTA --- replSize.get(): " + replSize.get() + " formerSize * (numMembers - 1) / numMembers: " + (formerSize * (numMembers - 1) / numMembers));
+//			 Utils.nodeSnapshot(myAddress, primaries, replicas);
+//			System.out.println("CUENTA --- replSize.get(): " + replicas.size() + " formerSize * (numMembers - 1) / numMembers: " + (formerSize * (numMembers - 1) / numMembers));
 			
-			// TODO ask what happens if there is no backups in this node (should
-			// not happen)
+			SignalInfo sInfo2;
 			BlockingQueue<SignalInfo> list;
+			Address chosen;
 			while (true) {
 				Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
-				list = replicas.get(tuple2.getFirst());
-				if (list != null && !tuple2.getFirst().equals(newMember)) {
-					break;
+				
+				if (!tuple2.getFirst().equals(newMember)) {
+					 list = replicas.get(tuple2.getFirst());
+					if (list != null) {
+						chosen = tuple2.getFirst();
+						break;
+					}
 				}
-				list = replicas.get(tuple2.getSecond());
-				if (list != null && !tuple2.getSecond().equals(newMember)) {
-					break;
+				
+				if (!tuple2.getSecond().equals(newMember)) {
+					list = replicas.get(tuple2.getSecond());
+					if (list != null) {
+						chosen = tuple2.getSecond();
+						break;
+					}
 				}
 			}
 
-			SignalInfo sInfo2 = list.poll();
-			System.out.println("sInfo2:" + sInfo2);
+			sInfo2 = replicas.pollList(chosen);
 			if (sInfo2 == null) {
-				replicas.remove(list);
 				continue;
 			}
-			replSize.decrementAndGet();
 
-			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo2.getSignal(), Operation.MOVE, true,sInfo2.getCopyAddress());
+			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo2.getSignal(), Operation.MOVE, true, sInfo2.getCopyAddress());
 			NotifyingFuture<Object> f = dispatcher.send(newMember, myMessage);
 			futureResponses.add(f);
 		}
@@ -114,16 +108,14 @@ public class NewNodeTask implements Runnable {
 	private void balancePrimaries() throws Exception {
 
 		int numMembers = members.size();
-		int formerSize = mapSize.get();
+		int formerSize = primaries.size();
 		List<Future<Object>> futureResponses = new ArrayList<>();
-		while (mapSize.get() > formerSize * (numMembers - 1) / numMembers) {
+		while (primaries.size() > formerSize * (numMembers - 1) / numMembers) {
 
-			BlockingQueue<SignalInfo> list;
+//			Utils.nodeSnapshot(myAddress, primaries, replicas);
 			SignalInfo sInfo;
 			while (true) {
-				list = map.get(nextInLine.getAndDecrement() % THREADS);
-				mapSize.decrementAndGet();
-				sInfo = list.poll();
+				sInfo = primaries.pollList(nextInLine.getAndDecrement() % THREADS);
 				if (sInfo != null) {
 					break;
 				}

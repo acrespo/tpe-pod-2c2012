@@ -5,7 +5,6 @@ import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -28,12 +27,14 @@ import ar.edu.itba.pod.legajo50758.api.SignalProcessor;
 public class Node implements SignalProcessor, SPNode {
 
 	private final int THREADS;
-	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();
-	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas = new ConcurrentHashMap<>();
-	private final AtomicInteger replSize = new AtomicInteger(0);
-	private final AtomicInteger mapSize = new AtomicInteger(0);
+//	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();
+//	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas = new ConcurrentHashMap<>();
+//	private final AtomicInteger replSize = new AtomicInteger(0);
+//	private final AtomicInteger mapSize = new AtomicInteger(0);
 	private final AtomicInteger nextInLine = new AtomicInteger(0);
-	
+	private final MySignalInfoMultimap<Integer> primaries = new MySignalInfoMultimap<>();
+	private final MySignalInfoMultimap<Address> replicas = new MySignalInfoMultimap<>();
+
 	private final JChannel channel; 
 	private View currentView = null;
 	
@@ -53,11 +54,8 @@ public class Node implements SignalProcessor, SPNode {
 		THREADS = nThreads;
 		channel = new JChannel("jgroups.xml");
 		
-		for(int i = 0; i < THREADS; i++) {
-			map.put(i, new LinkedBlockingQueue<SignalInfo>());
-		}
 		dispatcher = new MyMessageDispatcher(channel);
-		worker = new MyWorker(msgQueue, channel, map, replicas, mapSize, nextInLine, dispatcher, THREADS, replSize, degradedMode);
+		worker = new MyWorker(msgQueue, channel, primaries, replicas, nextInLine, dispatcher, THREADS, degradedMode);
 		receiver = new MyReceiverAdapter();
 		channel.setReceiver(receiver);
 	}
@@ -85,12 +83,7 @@ public class Node implements SignalProcessor, SPNode {
 
 	private boolean isEmpty() {
 		
-		for(BlockingQueue<SignalInfo> list : map.values()) {	
-			if (!list.isEmpty()) {
-				return false;
-			}
-		}
-		return true;
+		return primaries.isEmpty();
 	}
 
 	@Override
@@ -100,8 +93,6 @@ public class Node implements SignalProcessor, SPNode {
 		receivedSignals.set(0);
 		cluster = null;
 		
-		System.out.println("signals cleared!");
-		System.out.println("channel.isConnected?: " + channel.isConnected());
 		if (channel.isConnected()) {
 			
 			channel.disconnect();
@@ -115,23 +106,18 @@ public class Node implements SignalProcessor, SPNode {
 	}
 
 	private void clear() {
-		for (BlockingQueue<SignalInfo> list: map.values()) {
-			list.clear();
-		}		
-		for (BlockingQueue<SignalInfo> list: replicas.values()) {
-			list.clear();
-		} 
-		mapSize.set(0);
-		replSize.set(0);
+		primaries.clear();
+		replicas.clear();
 	}
 
 	@Override
 	public NodeStats getStats() throws RemoteException {
+//		Utils.nodeSnapshot(channel.getAddress(), primaries, replicas);
 		return new NodeStats(
 				cluster == null ? "standalone" : "cluster " + cluster, 
 				receivedSignals.longValue(),
-				mapSize.longValue(), 
-				replSize.get(), 
+				primaries.size(), 
+				replicas.size(), 
 				degradedMode.get());
 	}
 
@@ -157,9 +143,7 @@ public class Node implements SignalProcessor, SPNode {
 			Utils.waitForResponses(futures);
 			
 		} else {
-			BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
-			list.add(new SignalInfo(signal, null, true));
-			mapSize.incrementAndGet();
+			primaries.put(nextInLine.getAndIncrement() % THREADS, new SignalInfo(signal, null, true));
 		}
 	}
 

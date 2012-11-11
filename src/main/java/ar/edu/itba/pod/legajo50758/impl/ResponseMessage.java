@@ -2,6 +2,9 @@ package ar.edu.itba.pod.legajo50758.impl;
 
 import java.io.Serializable;
 
+import net.jcip.annotations.ThreadSafe;
+
+@ThreadSafe
 public class ResponseMessage implements Serializable {
 
 	private static final long serialVersionUID = -3729304125719629253L;

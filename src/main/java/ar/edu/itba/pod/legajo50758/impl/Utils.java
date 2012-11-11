@@ -5,7 +5,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -41,14 +40,11 @@ public class Utils {
 		System.out.println(String.format(format, params));
 	}
 	
-	public static SignalInfo searchForSignal(Signal obj, Collection<BlockingQueue<SignalInfo>> collection, boolean isReplica) {
+	public static SignalInfo searchForSignal(Signal obj, Collection<BlockingQueue<SignalInfo>> collection) {
 
 		for (BlockingQueue<SignalInfo> list : collection) {
 			for (SignalInfo sInfo : list) {
 				if (sInfo.getSignal().equals(obj)) {
-					if (isReplica) {
-						list.remove(sInfo);
-					}
 					return sInfo;
 				}
 			}
@@ -70,8 +66,8 @@ public class Utils {
 		
 	}
 	
-	public static void nodeSnapshot(Address nodeAddress, ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
-			ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas) {
+	public static void nodeSnapshot(Address nodeAddress, MySignalInfoMultimap<Integer> map,
+			MySignalInfoMultimap<Address> replicas) {
 		
 		
 		System.out.println("------------------------------");

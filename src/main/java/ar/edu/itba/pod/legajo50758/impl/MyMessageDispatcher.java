@@ -22,14 +22,12 @@ public class MyMessageDispatcher {
 
 	private final JChannel channel;
 	private final AtomicInteger idGenerator = new AtomicInteger(0);
-	private final Multimap<Address, MyFutureImpl<?>> addressToFuture;
-	private final Map<Integer, MyFutureImpl<?>> futures;
+	private final Multimap<Address, MyFutureImpl<?>> addressToFuture = Multimaps.synchronizedMultimap(HashMultimap.<Address, MyFutureImpl<?>>create());
+	private final Map<Integer, MyFutureImpl<?>> idToFuture = new ConcurrentHashMap<>();
 	
 	public MyMessageDispatcher(JChannel channel) {
 		
 		this.channel = channel;
-		futures = new ConcurrentHashMap<Integer, MyFutureImpl<?>>();
-		addressToFuture = Multimaps.synchronizedMultimap(HashMultimap.<Address, MyFutureImpl<?>>create());
 	}
 	
 	public <T> NotifyingFuture<T> send(Address address, Serializable content) {
@@ -38,13 +36,13 @@ public class MyMessageDispatcher {
 		final MyFutureImpl<T> future = new MyFutureImpl<T>();
 
 		addressToFuture.put(address, future);
-		futures.put(id, future);
+		idToFuture.put(id, future);
 
 		try {
 			channel.send(address, new RequestMessage(id, content));
 		} catch (final Exception e) {
 			addressToFuture.remove(address, future);
-			futures.remove(id);
+			idToFuture.remove(id);
 			future.nodeDisconnected(e);
 		}
 		return future;
@@ -52,7 +50,7 @@ public class MyMessageDispatcher {
 	
 	public void processResponse(Address origin, ResponseMessage response) {
 
-		final MyFutureImpl<?> future = futures.remove(response.getId());
+		final MyFutureImpl<?> future = idToFuture.remove(response.getId());
 		if (future != null) {
 			addressToFuture.remove(origin, future);
 			future.setResponse(response.getContent());

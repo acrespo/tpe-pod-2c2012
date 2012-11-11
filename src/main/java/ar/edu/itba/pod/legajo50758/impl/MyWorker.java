@@ -6,7 +6,6 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -29,33 +28,28 @@ public class MyWorker implements Runnable {
 
 	private final BlockingQueue<Message> msgQueue;
 	private final JChannel channel;
-	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map;
-	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas;
+	private final MySignalInfoMultimap<Integer> primaries;
+	private final MySignalInfoMultimap<Address> replicas;
 	private final AtomicInteger nextInLine;
-	private final AtomicInteger mapSize;
 	private final MyMessageDispatcher dispatcher;
 	private final ExecutorService pool;
 	private final int THREADS;
-	private final AtomicInteger replSize;
 	private final Semaphore phaseCounter = new Semaphore(0);
 	private final AtomicBoolean degradedMode;
 
 	public MyWorker(BlockingQueue<Message> msqQueue, JChannel channel,
-			ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map,
-			ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas,
-			AtomicInteger mapSize, AtomicInteger nextInLine,
-			MyMessageDispatcher dispatcher, final int THREADS, AtomicInteger replSize, AtomicBoolean degradedMode) {
+			MySignalInfoMultimap<Integer> primaries,
+			MySignalInfoMultimap<Address> replicas, AtomicInteger nextInLine,
+			MyMessageDispatcher dispatcher, final int THREADS, AtomicBoolean degradedMode) {
 		
 		this.msgQueue = msqQueue;
 		this.channel = channel;
-		this.map = map;
+		this.primaries = primaries;
 		this.replicas = replicas;
 		this.nextInLine = nextInLine;
-		this.mapSize = mapSize;
 		this.dispatcher = dispatcher;
 		this.THREADS = THREADS;
 		pool = Executors.newFixedThreadPool(THREADS);
-		this.replSize = replSize;
 		this.degradedMode = degradedMode;
 	}
 
@@ -91,7 +85,7 @@ public class MyWorker implements Runnable {
 					if (op == Operation.NODEUP) {
 						// member is NEW NODE
 						Tuple<Address, List<Address>> tuple = (Tuple<Address, List<Address>>) obj;
-						new Thread(new NewNodeTask(map, mapSize, nextInLine, replicas, replSize, THREADS, dispatcher, tuple, channel.getAddress(), this, degradedMode)).start();
+						new Thread(new NewNodeTask(primaries, nextInLine, replicas, THREADS, dispatcher, tuple, this, degradedMode)).start();
 					
 					} else if (op == Operation.NODEDOWN) {
 						
@@ -102,7 +96,7 @@ public class MyWorker implements Runnable {
 						List<Address> members = tuple.getSecond();
 						
 						BlockingQueue<SignalInfo> lostPrimaries = new LinkedBlockingQueue<>(replicas.get(nodeDown));
-						Queue<SignalInfo> lostReplicas = new LinkedList<>(Utils.searchForSignal(nodeDown, map.values()));					
+						Queue<SignalInfo> lostReplicas = new LinkedList<>(Utils.searchForSignal(nodeDown, primaries.values()));					
 
 						
 						System.out.println("NodeDOWN:" + nodeDown);
@@ -110,8 +104,8 @@ public class MyWorker implements Runnable {
 //						Utils.nodeSnapshot(channel.getAddress(), map, replicas);						
 //						Utils.printSignals(lostPrimaries, "Lost Primaries: ");
 //						Utils.printSignals(lostReplicas, "Lost Replicas: ");
-						System.out.println("Lost Primaries: " + lostPrimaries.size());
-						System.out.println("Lost Replicas: " + lostReplicas.size());
+//						System.out.println("Lost Primaries: " + lostPrimaries.size());
+//						System.out.println("Lost Replicas: " + lostReplicas.size());
 						
 						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress(), this, degradedMode)).start();
 					}
@@ -136,17 +130,10 @@ public class MyWorker implements Runnable {
 				
 				if (myMessage.getOp() == Operation.ADD) {
 					if (!myMessage.isReplica()) {
-						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
-						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
-						mapSize.incrementAndGet();
+						primaries.put(nextInLine.getAndIncrement() % THREADS, new SignalInfo(signal, myMessage.getCopyAddress(), true));
+						
 					} else {
-						BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
-						if (list == null) {
-							list = new LinkedBlockingQueue<>();
-							replicas.put(myMessage.getCopyAddress(), list);
-						}
-						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), false));
-						replSize.incrementAndGet();
+						replicas.put(myMessage.getCopyAddress(), new SignalInfo(signal, myMessage.getCopyAddress(), false));
 					}
 					
 					respond(message.getSrc(), reqMessage.getId(), null);
@@ -164,9 +151,7 @@ public class MyWorker implements Runnable {
 					
 					if (!myMessage.isReplica()) {
 //						System.out.println("Moving primary");
-						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
-						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
-						mapSize.incrementAndGet();
+						primaries.put(nextInLine.getAndIncrement() % THREADS, new SignalInfo(signal, myMessage.getCopyAddress(), true));
 						
 						NotifyingFuture<Object> future = dispatcher.send(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, false, channel.getAddress()));
 						future.setListener(new FutureListener<Object>() {
@@ -179,17 +164,9 @@ public class MyWorker implements Runnable {
 						
 					} else {
 //						System.out.println("Moving replica");
-//						System.out.println(channel.getView().getMembers().size());
 						if (!myMessage.getCopyAddress().equals(channel.getAddress()) || channel.getView().getMembers().size() == 1) {
 							
-							BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
-							
-							if (list == null) {
-								list = new LinkedBlockingQueue<>();
-								replicas.put(myMessage.getCopyAddress(), list);
-							}
-							list.add(new SignalInfo(signal, myMessage.getCopyAddress(), false));
-							replSize.incrementAndGet();
+							replicas.put(myMessage.getCopyAddress(), new SignalInfo(signal, myMessage.getCopyAddress(), false));
 							
 							NotifyingFuture<Object> future = dispatcher.send(myMessage.getCopyAddress(), new MyMessage<Signal>(signal, Operation.MOVED, true, channel.getAddress()));
 							future.setListener(new FutureListener<Object>() {
@@ -206,27 +183,17 @@ public class MyWorker implements Runnable {
 					SignalInfo signalInfo;
 //					Utils.nodeSnapshot(channel.getAddress(), map, replicas);
 					
-					if (!myMessage.isReplica()) {
-						signalInfo = Utils.searchForSignal(signal, replicas.values(), true);
+					if (!myMessage.isReplica()) {						
 //						System.out.println("MOVED primary");
-						BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
-						if (list == null) {
-							list = new LinkedBlockingQueue<>();
-							replicas.put(myMessage.getCopyAddress(), list);
-						}
-//						System.out.println("SignalInfo ;" + signalInfo);
-						list.add(signalInfo);
+						signalInfo = replicas.remove(signal);
+						replicas.put(myMessage.getCopyAddress(), signalInfo);
+						
 					} else {
 //						System.out.println("MOVED replica");
-						signalInfo = Utils.searchForSignal(signal, map.values(), false);
+						signalInfo = Utils.searchForSignal(signal, primaries.values());
 					}
-//					System.out.println("message.getSrc():" + message.getSrc());
-//					System.out.println("channel.getAddress():" + channel.getAddress());
-//					System.out.println("myMessage.getCopyAddress():" + myMessage.getCopyAddress());
 					
-					signalInfo.setCopyAddress(myMessage.getCopyAddress());
-					
-//					Utils.nodeSnapshot(channel.getAddress(), map, replicas);
+					signalInfo.setCopyAddress(myMessage.getCopyAddress());		
 					respond(message.getSrc(), reqMessage.getId(), null);
 				}
 			}
@@ -237,7 +204,7 @@ public class MyWorker implements Runnable {
 		
 		List<Future<Result>> futures = new ArrayList<>(THREADS);
 
-		for (BlockingQueue<SignalInfo> signals : map.values()) {
+		for (BlockingQueue<SignalInfo> signals : primaries.values()) {
 			futures.add(pool.submit(new MyTask(signal, signals)));
 		}
 
