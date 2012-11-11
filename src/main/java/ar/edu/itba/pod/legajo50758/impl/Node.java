@@ -27,10 +27,6 @@ import ar.edu.itba.pod.legajo50758.api.SignalProcessor;
 public class Node implements SignalProcessor, SPNode {
 
 	private final int THREADS;
-//	private final ConcurrentHashMap<Integer, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();
-//	private final ConcurrentHashMap<Address, BlockingQueue<SignalInfo>> replicas = new ConcurrentHashMap<>();
-//	private final AtomicInteger replSize = new AtomicInteger(0);
-//	private final AtomicInteger mapSize = new AtomicInteger(0);
 	private final AtomicInteger nextInLine = new AtomicInteger(0);
 	private final MySignalInfoMultimap<Integer> primaries = new MySignalInfoMultimap<>();
 	private final MySignalInfoMultimap<Address> replicas = new MySignalInfoMultimap<>();
