@@ -23,6 +23,14 @@ import ar.edu.itba.pod.legajo50758.api.Result.Item;
 import ar.edu.itba.pod.legajo50758.api.SPNode;
 import ar.edu.itba.pod.legajo50758.api.Signal;
 import ar.edu.itba.pod.legajo50758.api.SignalProcessor;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessage;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessageDispatcher;
+import ar.edu.itba.pod.legajo50758.impl.message.Operation;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.MySignalInfoMultimap;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Tuple;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Utils;
+import ar.edu.itba.pod.legajo50758.impl.task.MyWorker;
 
 public class Node implements SignalProcessor, SPNode {
 

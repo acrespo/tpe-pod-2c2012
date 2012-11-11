@@ -1,18 +1,18 @@
-package ar.edu.itba.pod.legajo50758.impl;
+package ar.edu.itba.pod.legajo50758.impl.message;
 
 import java.io.Serializable;
 
 import net.jcip.annotations.ThreadSafe;
 
 @ThreadSafe
-public class ResponseMessage implements Serializable {
+public class RequestMessage implements Serializable {
 
-	private static final long serialVersionUID = -3729304125719629253L;
+	private static final long serialVersionUID = 5467354726106264042L;
 	
 	private final Serializable content;
 	private final int id;
 
-	public ResponseMessage(int id, Serializable obj) {
+	public RequestMessage(int id, Serializable obj) {
 		this.id = id;
 		this.content = obj;
 	}

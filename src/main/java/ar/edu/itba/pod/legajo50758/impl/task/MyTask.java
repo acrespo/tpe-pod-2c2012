@@ -1,10 +1,11 @@
-package ar.edu.itba.pod.legajo50758.impl;
+package ar.edu.itba.pod.legajo50758.impl.task;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
 
 import ar.edu.itba.pod.legajo50758.api.Result;
 import ar.edu.itba.pod.legajo50758.api.Signal;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
 
 public class MyTask implements Callable<Result> {
 

@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl;
+package ar.edu.itba.pod.legajo50758.impl.task;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,6 +11,13 @@ import org.jgroups.Address;
 import org.jgroups.util.NotifyingFuture;
 
 import ar.edu.itba.pod.legajo50758.api.Signal;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessage;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessageDispatcher;
+import ar.edu.itba.pod.legajo50758.impl.message.Operation;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.MySignalInfoMultimap;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Tuple;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Utils;
 
 public class NewNodeTask implements Runnable {
 

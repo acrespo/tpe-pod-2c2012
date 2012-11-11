@@ -34,7 +34,7 @@
 					</descriptorRefs>
 					<archive>
 						<manifest>
-							<mainClass>ar.edu.itba.pod.legajo50453.Server</mainClass>
+							<mainClass>ar.edu.itba.pod.legajo50758.impl.Server</mainClass>
 						</manifest>
 					</archive>
 				</configuration>

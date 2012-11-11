@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl;
+package ar.edu.itba.pod.legajo50758.impl.task;
 
 import java.io.Serializable;
 import java.util.ArrayList;
@@ -23,6 +23,16 @@ import org.jgroups.util.NotifyingFuture;
 
 import ar.edu.itba.pod.legajo50758.api.Result;
 import ar.edu.itba.pod.legajo50758.api.Signal;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessage;
+import ar.edu.itba.pod.legajo50758.impl.message.MyMessageDispatcher;
+import ar.edu.itba.pod.legajo50758.impl.message.Operation;
+import ar.edu.itba.pod.legajo50758.impl.message.PhaseEnd;
+import ar.edu.itba.pod.legajo50758.impl.message.RequestMessage;
+import ar.edu.itba.pod.legajo50758.impl.message.ResponseMessage;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.MySignalInfoMultimap;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Tuple;
+import ar.edu.itba.pod.legajo50758.impl.myUtils.Utils;
 
 public class MyWorker implements Runnable {
 

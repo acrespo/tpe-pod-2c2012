@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl;
+package ar.edu.itba.pod.legajo50758.impl.message;
 
 import java.io.Serializable;
 import java.util.Map;
