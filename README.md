@@ -11,7 +11,7 @@ Fecha: 12/11/2012
 
 Compilación:
 -------------
-Ejectuar mvn package sobre. 
+Ejectuar `mvn package` sobre src. 
 En la carpeta target se creará el jar signal-1.0-jar-with-dependencies.jar con todas las dependencias externas.
 
 
@@ -19,9 +19,9 @@ Ejecución
 -------------
 Desde la misma carpeta src correr el comando 
 
-- java -jar signal-1.0-jar-with-dependencies.jar <numeroPuerto> <threadsProcesamiento>
+    java -jar signal-1.0-jar-with-dependencies.jar numeroPuerto threadsProcesamiento
 
-donde <puerto> es el puerto donde escuchará el RMI Registry y <threadsProcesamiento> es el número de threads de procesamiento que se utilizarán.
+donde numeroPuerto es el puerto donde escuchará el RMI Registry y threadsProcesamiento es el número de threads de procesamiento que se utilizarán.
 
 
 
