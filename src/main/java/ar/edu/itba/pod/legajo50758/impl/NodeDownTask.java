@@ -1,6 +1,7 @@
 package ar.edu.itba.pod.legajo50758.impl;
 
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
@@ -62,7 +63,11 @@ public class NodeDownTask implements Runnable {
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while((sInfo = queue.poll()) != null) {
 						
-			Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(members);
+			
+			List<Address> allButMe = new LinkedList<>(members);
+			allButMe.remove(myAddress);
+			
+			Tuple<Address, Address> tuple2 = Utils.chooseRandomMember(allButMe);
 			Address chosen = tuple2.getFirst(); 
 					
 			MyMessage<Signal> myMessage = new MyMessage<Signal>(sInfo.getSignal(), Operation.MOVE, replica, myAddress);

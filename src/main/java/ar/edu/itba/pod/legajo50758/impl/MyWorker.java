@@ -113,6 +113,9 @@ public class MyWorker implements Runnable {
 //						Utils.nodeSnapshot(channel.getAddress(), map, replicas);						
 //						Utils.printSignals(lostPrimaries, "Lost Primaries: ");
 //						Utils.printSignals(lostReplicas, "Lost Replicas: ");
+						System.out.println("Lost Primaries: " + lostPrimaries.size());
+						System.out.println("Lost Replicas: " + lostReplicas.size());
+						
 						
 						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress(), this, degradedMode)).start();
 					}
@@ -164,7 +167,7 @@ public class MyWorker implements Runnable {
 				} else if (myMessage.getOp() == Operation.MOVE) {
 					
 					if (!myMessage.isReplica()) {
-						System.out.println("Moving primary");
+//						System.out.println("Moving primary");
 						BlockingQueue<SignalInfo> list = map.get(nextInLine.getAndIncrement() % THREADS);
 						list.add(new SignalInfo(signal, myMessage.getCopyAddress(), true));
 						mapSize.incrementAndGet();
@@ -179,8 +182,8 @@ public class MyWorker implements Runnable {
 						});
 						
 					} else {
-						System.out.println("Moving replica");
-						System.out.println(channel.getView().getMembers().size());
+//						System.out.println("Moving replica");
+//						System.out.println(channel.getView().getMembers().size());
 						if (!myMessage.getCopyAddress().equals(channel.getAddress()) || channel.getView().getMembers().size() == 1) {
 							
 							BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
@@ -200,43 +203,25 @@ public class MyWorker implements Runnable {
 									respond(message.getSrc(), reqMessage.getId(), null);
 								}
 							});
-						} else {
-							
-							List<Address> membersExceptMe = new LinkedList<>(channel.getView().getMembers());
-							membersExceptMe.remove(channel.getAddress());
-							Tuple<Address, Address> tuple = Utils.chooseRandomMember(membersExceptMe);	
-							
-							MyMessage<Signal> anotherMessage = new MyMessage<Signal>(signal, Operation.MOVE, true, myMessage.getCopyAddress());
-							NotifyingFuture<Object> f = dispatcher.send(tuple.getFirst(), anotherMessage);	
-							
-//							try {
-//								f.get();
-//							} catch (InterruptedException | ExecutionException e) {
-//								// TODO Auto-generated catch block
-//								e.printStackTrace();
-//							}
-							
-							respond(message.getSrc(), reqMessage.getId(), null);						
-						}
-//						Utils.nodeSnapshot(channel.getAddress(), map, replicas);
+						} 
 					}
 				} else if (myMessage.getOp() == Operation.MOVED) {
 					
 					SignalInfo signalInfo;
-					Utils.nodeSnapshot(channel.getAddress(), map, replicas);
+//					Utils.nodeSnapshot(channel.getAddress(), map, replicas);
 					
 					if (!myMessage.isReplica()) {
 						signalInfo = Utils.searchForSignal(signal, replicas.values(), true);
-						System.out.println("MOVED primary");
+//						System.out.println("MOVED primary");
 						BlockingQueue<SignalInfo> list = replicas.get(myMessage.getCopyAddress());
 						if (list == null) {
 							list = new LinkedBlockingQueue<>();
 							replicas.put(myMessage.getCopyAddress(), list);
 						}
-						System.out.println("SignalInfo ;" + signalInfo);
+//						System.out.println("SignalInfo ;" + signalInfo);
 						list.add(signalInfo);
 					} else {
-						System.out.println("MOVED replica");
+//						System.out.println("MOVED replica");
 						signalInfo = Utils.searchForSignal(signal, map.values(), false);
 					}
 //					System.out.println("message.getSrc():" + message.getSrc());
@@ -282,7 +267,7 @@ public class MyWorker implements Runnable {
 	}
 	
 	public void phaseEnd(int numMembers) throws Exception {
-		System.out.println("broadcasting phase end");
+//		System.out.println("broadcasting phase end");
 		channel.send(new Message(null, new PhaseEnd()));
 		phaseCounter.acquire(numMembers);
 	}

@@ -71,11 +71,13 @@ public class NewNodeTask implements Runnable {
 		int formerSize = replSize.get();
 		int numMembers = members.size();
 		List<Future<Object>> futureResponses = new ArrayList<>();
-		while (replSize.get() > formerSize * (numMembers - 1) / numMembers) {
+		while (replSize.get() > (formerSize +1) * (numMembers - 1) / numMembers) {
 
 			// System.out.println("CHOOOSING RANDOM REPLICA TO BALANCE");
 			// Utils.nodeSnapshot(myAddress, map, replicas);
 
+			System.out.println("CUENTA --- replSize.get(): " + replSize.get() + " formerSize * (numMembers - 1) / numMembers: " + (formerSize * (numMembers - 1) / numMembers));
+			
 			// TODO ask what happens if there is no backups in this node (should
 			// not happen)
 			BlockingQueue<SignalInfo> list;
@@ -94,7 +96,8 @@ public class NewNodeTask implements Runnable {
 			SignalInfo sInfo2 = list.poll();
 			System.out.println("sInfo2:" + sInfo2);
 			if (sInfo2 == null) {
-				break;
+				replicas.remove(list);
+				continue;
 			}
 			replSize.decrementAndGet();
 
