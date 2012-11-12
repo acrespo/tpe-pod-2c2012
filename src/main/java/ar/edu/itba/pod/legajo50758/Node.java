@@ -224,8 +224,8 @@ public class Node implements SignalProcessor, SPNode {
 							} catch (Exception e) {
 								e.printStackTrace();
 							}
-							degradedMode.set(false);
 						}
+						degradedMode.set(false);
 						waitForBalacing.release();
 						return;
 					}

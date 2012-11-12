@@ -112,14 +112,8 @@ public class MessageConsumer implements Runnable {
 						}
 						BlockingQueue<SignalInfo> lostPrimaries = new LinkedBlockingQueue<>(queue);
 						Queue<SignalInfo> lostReplicas = new LinkedList<>(Utils.searchForSignal(nodeDown, primaries.values()));					
-
-						
+	
 						System.out.println("Node down:" + nodeDown);					
-//						Utils.nodeSnapshot(channel.getAddress(), map, replicas);						
-//						Utils.printSignals(lostPrimaries, "Lost Primaries: ");
-//						Utils.printSignals(lostReplicas, "Lost Replicas: ");
-//						System.out.println("Lost Primaries: " + lostPrimaries.size());
-//						System.out.println("Lost Replicas: " + lostReplicas.size());
 						
 						new Thread(new NodeDownTask(lostPrimaries, lostReplicas, dispatcher, members, channel.getAddress(), this, degradedMode, waitForBalancing)).start();
 					}
