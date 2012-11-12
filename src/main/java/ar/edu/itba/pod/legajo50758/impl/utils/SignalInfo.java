@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl.myUtils;
+package ar.edu.itba.pod.legajo50758.impl.utils;
 
 import java.io.Serializable;
 
@@ -44,31 +44,5 @@ public class SignalInfo implements Serializable {
 		synchronized (copyAddress) {
 			this.copyAddress = copyAddress;			
 		}
-	}
-
-	
-	/**
-	 * 
-	 * Used only in a special case. Its fine that its based only in the signal and isPrimary.
-	 * 
-	 */
-	@Override
-	public boolean equals(Object obj) {
-		
-		if (this == obj)
-			return true;
-		if (obj == null)
-			return false;
-		if (getClass() != obj.getClass())
-			return false;
-		SignalInfo other = (SignalInfo) obj;
-		if (isPrimary != other.isPrimary)
-			return false;
-		if (signal == null) {
-			if (other.signal != null)
-				return false;
-		} else if (!signal.equals(other.signal))
-			return false;
-		return true;
 	}
 }

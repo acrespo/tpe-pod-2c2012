@@ -62,6 +62,10 @@ public class SampleClient {
 					this.generate(sp, 1000);
 				} else if (line.equals("9")) {
 					this.generate(sp, 1000000);
+				} else if (line.equals("10")) {
+					this.generate(sp, 10000);
+				} else if (line.equals("11")) {
+					this.generate(sp, 100000);
 				} else if (line.equals("0")) {
 					return;
 				} else {
@@ -94,6 +98,8 @@ public class SampleClient {
 		System.out.println("7 - Add 100 signals");
 		System.out.println("8 - Add 1.000 signals");
 		System.out.println("9 - Add 1.000.000 signals");
+		System.out.println("10 - Add 10.000 signals");
+		System.out.println("11 - Add 100.000 signals");
 		System.out.println("0 - End");
 		System.out.print("> ");
 		System.out.flush();

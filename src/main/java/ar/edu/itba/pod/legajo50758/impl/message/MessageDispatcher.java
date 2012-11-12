@@ -1,10 +1,10 @@
 package ar.edu.itba.pod.legajo50758.impl.message;
 
 import java.io.Serializable;
+import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -14,18 +14,20 @@ import org.jgroups.JChannel;
 import org.jgroups.util.FutureListener;
 import org.jgroups.util.NotifyingFuture;
 
+import ar.edu.itba.pod.legajo50758.impl.utils.DegradedModeException;
+
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.common.collect.Multimaps;
 
-public class MyMessageDispatcher {
+public class MessageDispatcher {
 
 	private final JChannel channel;
 	private final AtomicInteger idGenerator = new AtomicInteger(0);
 	private final Multimap<Address, MyFutureImpl<?>> addressToFuture = Multimaps.synchronizedMultimap(HashMultimap.<Address, MyFutureImpl<?>>create());
 	private final Map<Integer, MyFutureImpl<?>> idToFuture = new ConcurrentHashMap<>();
 	
-	public MyMessageDispatcher(JChannel channel) {
+	public MessageDispatcher(JChannel channel) {
 		
 		this.channel = channel;
 	}
@@ -33,7 +35,7 @@ public class MyMessageDispatcher {
 	public <T> NotifyingFuture<T> send(Address address, Serializable content) {
 
 		final int id = idGenerator.getAndIncrement();
-		final MyFutureImpl<T> future = new MyFutureImpl<T>();
+		final MyFutureImpl<T> future = new MyFutureImpl<T>(id);
 
 		addressToFuture.put(address, future);
 		idToFuture.put(id, future);
@@ -43,7 +45,7 @@ public class MyMessageDispatcher {
 		} catch (final Exception e) {
 			addressToFuture.remove(address, future);
 			idToFuture.remove(id);
-			future.nodeDisconnected(e);
+			future.nodeDisconnected();
 		}
 		return future;
 	}
@@ -61,14 +63,28 @@ public class MyMessageDispatcher {
 		channel.send(address, new ResponseMessage(id, content));
 	}
 	
+	public void nodeDisconnected(Address address) {
+		final Collection<MyFutureImpl<?>> aborted = addressToFuture.removeAll(address);
+		if (aborted != null) {
+			for (final MyFutureImpl<?> future : aborted) {
+				idToFuture.remove(future.getId());
+				future.nodeDisconnected();
+			}
+		}
+	}	
 	
-	private static class MyFutureImpl<T> implements NotifyingFuture<T> {
+	private class MyFutureImpl<T> implements NotifyingFuture<T> {
 
 		private T response;
 		private final CountDownLatch isDone = new CountDownLatch(1);
 		private boolean disconnected;
-		private Exception e;
 		private FutureListener<T> listener;
+		private int id;
+		private Object lock = new Object();
+		
+		public MyFutureImpl(int id) {
+			this.id = id;
+		}
 		
 		@SuppressWarnings("unchecked")
 		public synchronized void setResponse(Serializable content) {
@@ -87,15 +103,10 @@ public class MyMessageDispatcher {
 			
 		}
 
-		public synchronized void nodeDisconnected(Exception e) {
-			
-			if (isDone.getCount() != 0) {
-				disconnected = true;
-				this.e = e;
-			}
-			done();
+		public int getId() {
+			return id;
 		}
-
+		
 		private void done() {
 			
 			isDone.countDown();
@@ -104,33 +115,37 @@ public class MyMessageDispatcher {
 			}
 		}
 		
-		public synchronized void nodeDisconnected() {
+		public void nodeDisconnected() {
 
-			if (isDone.getCount() != 0) {
-				disconnected = true;
+			synchronized (lock) {
+				
+				if (isDone.getCount() != 0) {
+					disconnected = true;
+				}
+				done();
 			}
-			done();
 		}
 
 		@Override
-		public synchronized boolean cancel(boolean arg0) {
+		public boolean cancel(boolean arg0) {
 			return false;
 		}
 
 		@Override
-		public T get() throws InterruptedException, ExecutionException {
+		public T get() throws InterruptedException, DegradedModeException {
 			
 			isDone.await();
-			synchronized (this) {
+			synchronized (lock) {
 				if (disconnected) {
-					throw new ExecutionException("The reciepient disconnected before answering", e);
+					System.out.println("throwing exceptionnnn");
+					throw new DegradedModeException("The recipient disconnected before answering");
 				}
 				return response;				
 			}
 		}
 
 		@Override
-		public T get(long timeout, TimeUnit timeUnit) throws InterruptedException, ExecutionException, TimeoutException {
+		public T get(long timeout, TimeUnit timeUnit) throws InterruptedException, DegradedModeException, TimeoutException {
 			
 			if (isDone.await(timeout, timeUnit)) {
 				return get();
@@ -149,14 +164,16 @@ public class MyMessageDispatcher {
 		}
 
 		@Override
-		public synchronized NotifyingFuture<T> setListener(FutureListener<T> listener) {
+		public NotifyingFuture<T> setListener(FutureListener<T> listener) {
 			
-			if (isDone() && listener != null) {
-				listener.futureDone(this);
+			synchronized (lock) {
+				if (isDone() && listener != null) {
+					listener.futureDone(this);
+				}
+				this.listener = listener;
+				
+				return this;				
 			}
-			this.listener = listener;
-
-			return this;
 		}
 	}
 }

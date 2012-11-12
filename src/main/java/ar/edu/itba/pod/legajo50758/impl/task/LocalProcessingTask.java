@@ -5,14 +5,14 @@ import java.util.concurrent.Callable;
 
 import ar.edu.itba.pod.legajo50758.api.Result;
 import ar.edu.itba.pod.legajo50758.api.Signal;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.utils.SignalInfo;
 
-public class MyTask implements Callable<Result> {
+public class LocalProcessingTask implements Callable<Result> {
 
 	private Signal signal;
 	private BlockingQueue<SignalInfo> signals;
 
-	public MyTask(Signal signal, BlockingQueue<SignalInfo> signals) {
+	public LocalProcessingTask(Signal signal, BlockingQueue<SignalInfo> signals) {
 		this.signal = signal;
 		this.signals = signals;
 	}

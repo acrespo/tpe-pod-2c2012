@@ -12,31 +12,33 @@ import org.jgroups.util.NotifyingFuture;
 
 import ar.edu.itba.pod.legajo50758.api.Signal;
 import ar.edu.itba.pod.legajo50758.impl.message.MyMessage;
-import ar.edu.itba.pod.legajo50758.impl.message.MyMessageDispatcher;
+import ar.edu.itba.pod.legajo50758.impl.message.MessageDispatcher;
 import ar.edu.itba.pod.legajo50758.impl.message.Operation;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.MySignalInfoMultimap;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.Tuple;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.Utils;
+import ar.edu.itba.pod.legajo50758.impl.utils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.utils.SignalInfoMultimap;
+import ar.edu.itba.pod.legajo50758.impl.utils.Synchronizer;
+import ar.edu.itba.pod.legajo50758.impl.utils.Tuple;
+import ar.edu.itba.pod.legajo50758.impl.utils.Utils;
 
 public class NewNodeTask implements Runnable {
 
-	private final MySignalInfoMultimap<Integer> primaries;
-	private final MySignalInfoMultimap<Address> replicas;
+	private final SignalInfoMultimap<Integer> primaries;
+	private final SignalInfoMultimap<Address> replicas;
 	private final AtomicInteger nextInLine;
 	private final int THREADS;
-	private final MyMessageDispatcher dispatcher;
+	private final MessageDispatcher dispatcher;
 	private final Address newMember;
 	private final List<Address> members;
-	private final MyWorker worker;
+	private final MessageConsumer worker;
 	private final AtomicBoolean degradedMode;
+	private Synchronizer waitForBalancing;
 
 	public NewNodeTask(
-			MySignalInfoMultimap<Integer> primaries, AtomicInteger nextInLine,
-			MySignalInfoMultimap<Address> replicas, int THREADS,
-			MyMessageDispatcher dispatcher,
-			Tuple<Address, List<Address>> tuple, MyWorker worker, 
-			AtomicBoolean degradedMode) {
+			SignalInfoMultimap<Integer> primaries, AtomicInteger nextInLine,
+			SignalInfoMultimap<Address> replicas, int THREADS,
+			MessageDispatcher dispatcher,
+			Tuple<Address, List<Address>> tuple, MessageConsumer worker, 
+			AtomicBoolean degradedMode, Synchronizer waitForBalancing) {
 
 		this.primaries = primaries;
 		this.replicas = replicas;
@@ -47,6 +49,7 @@ public class NewNodeTask implements Runnable {
 		this.members = tuple.getSecond();
 		this.worker = worker;
 		this.degradedMode = degradedMode;
+		this.waitForBalancing = waitForBalancing;
 	}
 
 	@Override
@@ -60,7 +63,7 @@ public class NewNodeTask implements Runnable {
 			e.printStackTrace();
 		}
 		degradedMode.set(false);
-		//TODO resumir trabajos de procesamiento
+		waitForBalancing.release();
 	}
 
 	private void balanceReplicas() throws Exception {
@@ -70,9 +73,6 @@ public class NewNodeTask implements Runnable {
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while (replicas.size() > (formerSize +1) * (numMembers - 1) / numMembers) {
 
-//			 Utils.nodeSnapshot(myAddress, primaries, replicas);
-//			System.out.println("CUENTA --- replSize.get(): " + replicas.size() + " formerSize * (numMembers - 1) / numMembers: " + (formerSize * (numMembers - 1) / numMembers));
-			
 			SignalInfo sInfo2;
 			BlockingQueue<SignalInfo> list;
 			Address chosen;
@@ -119,7 +119,6 @@ public class NewNodeTask implements Runnable {
 		List<Future<Object>> futureResponses = new ArrayList<>();
 		while (primaries.size() > formerSize * (numMembers - 1) / numMembers) {
 
-//			Utils.nodeSnapshot(myAddress, primaries, replicas);
 			SignalInfo sInfo;
 			while (true) {
 				sInfo = primaries.pollList(nextInLine.getAndDecrement() % THREADS);

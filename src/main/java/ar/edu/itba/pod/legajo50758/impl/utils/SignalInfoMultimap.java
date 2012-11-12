@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl.myUtils;
+package ar.edu.itba.pod.legajo50758.impl.utils;
 
 import java.util.Collection;
 import java.util.concurrent.BlockingQueue;
@@ -20,7 +20,7 @@ import ar.edu.itba.pod.legajo50758.api.Signal;
  * 
  */
 @ThreadSafe
-public class MySignalInfoMultimap<K> {
+public class SignalInfoMultimap<K> {
 
 	@GuardedBy("lock")
 	private final ConcurrentHashMap<K, BlockingQueue<SignalInfo>> map = new ConcurrentHashMap<>();

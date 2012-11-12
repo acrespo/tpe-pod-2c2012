@@ -13,25 +13,28 @@ import org.jgroups.util.NotifyingFuture;
 
 import ar.edu.itba.pod.legajo50758.api.Signal;
 import ar.edu.itba.pod.legajo50758.impl.message.MyMessage;
-import ar.edu.itba.pod.legajo50758.impl.message.MyMessageDispatcher;
+import ar.edu.itba.pod.legajo50758.impl.message.MessageDispatcher;
 import ar.edu.itba.pod.legajo50758.impl.message.Operation;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.SignalInfo;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.Tuple;
-import ar.edu.itba.pod.legajo50758.impl.myUtils.Utils;
+import ar.edu.itba.pod.legajo50758.impl.utils.SignalInfo;
+import ar.edu.itba.pod.legajo50758.impl.utils.Synchronizer;
+import ar.edu.itba.pod.legajo50758.impl.utils.Tuple;
+import ar.edu.itba.pod.legajo50758.impl.utils.Utils;
 
 public class NodeDownTask implements Runnable {
 
 	private final Queue<SignalInfo> lostReplicas;
 	private final BlockingQueue<SignalInfo> lostPrimaries;
-	private final MyMessageDispatcher dispatcher;
+	private final MessageDispatcher dispatcher;
 	private final List<Address> members;
 	private final Address myAddress;
-	private final MyWorker worker;
+	private final MessageConsumer worker;
 	private final AtomicBoolean degradedMode;
+	private Synchronizer waitForBalancing;
 
 	public NodeDownTask(BlockingQueue<SignalInfo> lostPrimaries,
-			Queue<SignalInfo> lostReplicas, MyMessageDispatcher dispatcher,
-			List<Address> members, Address myAddress, MyWorker worker, AtomicBoolean degradedMode) {
+			Queue<SignalInfo> lostReplicas, MessageDispatcher dispatcher,
+			List<Address> members, Address myAddress, MessageConsumer worker, 
+			AtomicBoolean degradedMode, Synchronizer waitForBalancing) {
 		
 		this.lostPrimaries = lostPrimaries;
 		this.lostReplicas = lostReplicas;
@@ -40,6 +43,7 @@ public class NodeDownTask implements Runnable {
 		this.myAddress = myAddress;
 		this.worker = worker;
 		this.degradedMode = degradedMode;
+		this.waitForBalancing = waitForBalancing;
 	}
 
 	@Override
@@ -59,7 +63,7 @@ public class NodeDownTask implements Runnable {
 		}
 		
 		degradedMode.set(false);
-		//TODO resumir trabajos de procesamiento
+		waitForBalancing.release();
 	}
 
 	private void distributeSignals(Queue<SignalInfo> queue, boolean replica) throws Exception {

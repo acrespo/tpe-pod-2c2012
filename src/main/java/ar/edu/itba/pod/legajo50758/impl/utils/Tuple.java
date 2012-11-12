@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl.myUtils;
+package ar.edu.itba.pod.legajo50758.impl.utils;
 
 import java.io.Serializable;
 

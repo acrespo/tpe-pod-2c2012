@@ -1,4 +1,4 @@
-package ar.edu.itba.pod.legajo50758.impl.myUtils;
+package ar.edu.itba.pod.legajo50758.impl.utils;
 
 import java.util.Collection;
 import java.util.LinkedList;
@@ -66,8 +66,8 @@ public class Utils {
 		
 	}
 	
-	public static void nodeSnapshot(Address nodeAddress, MySignalInfoMultimap<Integer> map,
-			MySignalInfoMultimap<Address> replicas) {
+	public static void nodeSnapshot(Address nodeAddress, SignalInfoMultimap<Integer> map,
+			SignalInfoMultimap<Address> replicas) {
 		
 		
 		System.out.println("------------------------------");
